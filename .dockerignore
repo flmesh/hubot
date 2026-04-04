@@ -1,0 +1,25 @@
+# Dependencies are installed inside the image; don't copy the host copy
+node_modules/
+
+# Git history is not needed at runtime
+.git/
+.gitignore
+
+# CI/CD and GitHub config
+.github/
+
+# Local environment secrets – must never end up in the image
+.env
+.env.*
+!.env.example
+
+# Editor/OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / documentation artefacts
+README.md
+*.md

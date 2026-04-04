@@ -1,0 +1,19 @@
+{
+  "name": "hubot-discord",
+  "version": "1.0.0",
+  "description": "Hubot chatbot connected to Discord, containerised and published via GitHub Actions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=9"
+  },
+  "scripts": {
+    "start": "hubot --adapter discord --name \"${HUBOT_NAME:-hubot}\"",
+    "dev": "HUBOT_LOG_LEVEL=debug npm start"
+  },
+  "dependencies": {
+    "@hubot-friends/hubot-discord": "^4.2.0",
+    "hubot": "^14.1.0"
+  }
+}
