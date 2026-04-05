@@ -9,11 +9,12 @@
 1. [Prerequisites](#prerequisites)
 2. [Create a Discord bot token](#create-a-discord-bot-token)
 3. [Environment variables](#environment-variables)
-4. [Run locally with Docker](#run-locally-with-docker)
-5. [Build locally](#build-locally)
-6. [GitHub Actions publish flow](#github-actions-publish-flow)
-7. [GHCR image naming convention](#ghcr-image-naming-convention)
-8. [Extending Hubot with additional scripts](#extending-hubot-with-additional-scripts)
+4. [Run locally with Docker Compose](#run-locally-with-docker-compose)
+5. [Run locally with Docker](#run-locally-with-docker)
+6. [Build locally](#build-locally)
+7. [GitHub Actions publish flow](#github-actions-publish-flow)
+8. [GHCR image naming convention](#ghcr-image-naming-convention)
+9. [Extending Hubot with additional scripts](#extending-hubot-with-additional-scripts)
 
 ---
 
@@ -22,6 +23,7 @@
 | Tool | Version |
 |------|---------|
 | Docker | 24+ |
+| Docker Compose | v2+ |
 | Node.js (local dev only) | 22 LTS |
 | npm | 9+ |
 | A Discord application & bot | — |
@@ -54,8 +56,31 @@ cp .env.example .env
 | `HUBOT_OWNER` | no | — | Owner name shown in help |
 | `HUBOT_DESCRIPTION` | no | — | Bot description shown in help |
 | `HUBOT_LOG_LEVEL` | no | `info` | Log verbosity: `debug` \| `info` \| `warning` \| `error` |
+| `REDIS_URL` | no | `redis://localhost:6379` | Redis connection URL used by `hubot-redis-brain` |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
+
+---
+
+## Run locally with Docker Compose
+
+A `docker-compose.yml` is provided for local testing. It builds the image and
+passes your `.env` file into the container automatically:
+
+```bash
+# Copy the example env file and fill in your token
+cp .env.example .env
+
+# Build and start (foreground – useful for watching logs)
+docker compose up --build
+
+# Build and start detached
+docker compose up --build -d
+docker compose logs -f
+
+# Tear down
+docker compose down
+```
 
 ---
 
@@ -137,3 +162,7 @@ export default (robot) => {
 3. Rebuild the Docker image (or restart `npm start` locally) – Hubot loads all files in `scripts/` automatically.
 
 For reusable community scripts, install them via npm and list them in `external-scripts.json`.
+
+> **Adapter note:** The Discord adapter is loaded by its full npm package name
+> `@hubot-friends/hubot-discord`. Do **not** use the short alias `discord` – Hubot
+> will fail to resolve the module.

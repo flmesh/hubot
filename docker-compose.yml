@@ -1,0 +1,37 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: hubot-redis-test
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  hubot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hubot-discord:local
+    container_name: hubot-discord-test
+    env_file:
+      - .env
+    environment:
+      HUBOT_NAME: ${HUBOT_NAME:-hubot}
+      HUBOT_LOG_LEVEL: ${HUBOT_LOG_LEVEL:-info}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: "no"
+    init: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
