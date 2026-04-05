@@ -57,6 +57,10 @@ cp .env.example .env
 | `HUBOT_DESCRIPTION` | no | — | Bot description shown in help |
 | `HUBOT_LOG_LEVEL` | no | `info` | Log verbosity: `debug` \| `info` \| `warning` \| `error` |
 | `REDIS_URL` | no | `redis://localhost:6379` | Redis connection URL used by `hubot-redis-brain` |
+| `LOKI_URL` | no | `http://host.docker.internal:3100` | Loki base URL used by `hubot node logs` |
+| `LOKI_USERNAME` | no | — | Optional Loki basic auth username |
+| `LOKI_PASSWORD` | no | — | Optional Loki basic auth password |
+| `NODE_LOGS_CACHE_TTL_SECONDS` | no | `30` | Redis cache TTL for `node.logs` replies; set `0` to disable |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
 
@@ -153,8 +157,11 @@ ghcr.io/flmesh/hubot:1
 
 ```js
 export default (robot) => {
-  robot.respond(/hello$/i, (msg) => {
-    msg.reply("Hello there!");
+  robot.commands.register({
+    id: "hello",
+    description: "Say hello",
+    confirm: "never",
+    handler: async () => "Hello there!",
   });
 };
 ```
@@ -162,6 +169,31 @@ export default (robot) => {
 3. Rebuild the Docker image (or restart `npm start` locally) – Hubot loads all files in `scripts/` automatically.
 
 For reusable community scripts, install them via npm and list them in `external-scripts.json`.
+
+## Built-In Node Logs Command
+
+This repository includes a built-in command that queries Loki for EMQX log
+entries for a single client ID.
+
+Supported command form:
+
+```text
+hubot node.logs clientid:<clientid> [minutes:<n>] [limit:<n>]
+```
+
+Behavior:
+
+- Input is an 8-character lowercase hexadecimal node ID. It can be passed as
+  `a1b2c3d4` or `!a1b2c3d4`.
+- The command searches EMQX entries that match approved client ID patterns, and
+  then refines results to entries that resolve to the provided node ID.
+- If `minutes` is omitted, it defaults to `15`.
+- `limit` is optional and capped server-side to avoid oversized chat messages.
+- Returned fields are fixed to: timestamp, level, clientid, action, topic, and
+  msg.
+- Replies are cached in Redis for `30` seconds by default to reduce repeated
+  Loki queries. Set `NODE_LOGS_CACHE_TTL_SECONDS=0` to disable caching.
+- Command help is available with `@hubot node.logs --help`.
 
 > **Adapter note:** The Discord adapter is loaded by its full npm package name
 > `@hubot-friends/hubot-discord`. Do **not** use the short alias `discord` – Hubot
