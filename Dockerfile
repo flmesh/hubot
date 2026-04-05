@@ -42,6 +42,9 @@ COPY external-scripts.json ./
 COPY scripts/ ./scripts/
 COPY docker-entrypoint.sh ./
 
+# Hubot checks these paths during bootstrap; keep them present even when empty.
+RUN mkdir -p /app/configuration /app/src/scripts
+
 # Create a non-root user/group, fix ownership, and make the entrypoint
 # executable in a single layer.
 RUN addgroup -S hubot && adduser -S hubot -G hubot \

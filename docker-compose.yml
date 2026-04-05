@@ -1,0 +1,41 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: hubot-redis-test
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  hubot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hubot-discord:local
+    container_name: hubot-discord-test
+    env_file:
+      - .env
+    environment:
+      HUBOT_NAME: ${HUBOT_NAME:-hubot}
+      HUBOT_LOG_LEVEL: ${HUBOT_LOG_LEVEL:-info}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOKI_URL: ${LOKI_URL:-http://host.docker.internal:3100}
+      LOKI_USERNAME: ${LOKI_USERNAME:-}
+      LOKI_PASSWORD: ${LOKI_PASSWORD:-}
+      NODE_LOGS_CACHE_TTL_SECONDS: ${NODE_LOGS_CACHE_TTL_SECONDS:-30}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: "no"
+    init: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

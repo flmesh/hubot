@@ -10,5 +10,5 @@ if [ -z "${HUBOT_DISCORD_TOKEN}" ]; then
 fi
 
 exec node_modules/.bin/hubot \
-  --adapter discord \
+  --adapter "@hubot-friends/hubot-discord" \
   --name "${HUBOT_NAME:-hubot}"
