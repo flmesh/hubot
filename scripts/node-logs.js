@@ -6,6 +6,8 @@
 // Commands:
 //   hubot node.logs clientid:<nodeid> [minutes:<n>] [limit:<n>] - Built-in command-bus form.
 
+import { deliverPossiblyViaDm } from "./dm-delivery.js";
+
 const DEFAULT_MINUTES = 15;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -14,6 +16,8 @@ const MAX_QUERY_LIMIT = 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 const DEFAULT_CACHE_TTL_SECONDS = 30;
 const NODE_ID_INPUT_PATTERN = /^!?([A-Fa-f0-9]{8})$/;
+const DECIMAL_NODE_ID_INPUT_PATTERN = /^\d+$/;
+const MAX_NODE_ID = 0xffffffffn;
 const LOGQL_ALLOWED_CLIENTID_REGEX =
   "^(MeshtasticPythonMqttProxy-[A-Za-z0-9!_-]+|MeshtasticAppleMqttProxy-!?[A-Za-z0-9_-]+|MeshtasticAndroidMqttProxy-!?[A-Za-z0-9_-]+|![A-Za-z0-9]+)$";
 
@@ -24,10 +28,18 @@ let redisWarningLogged = false;
 function normalizeRequestedNodeId(value) {
   const trimmed = String(value ?? "").trim();
   const match = trimmed.match(NODE_ID_INPUT_PATTERN);
-  if (!match) {
-    throw new Error("clientid must be an 8-character lowercase hexadecimal value, optionally prefixed with !");
+  if (match) {
+    return match[1].toLowerCase();
   }
-  return match[1].toLowerCase();
+
+  if (DECIMAL_NODE_ID_INPUT_PATTERN.test(trimmed)) {
+    const parsed = BigInt(trimmed);
+    if (parsed <= MAX_NODE_ID) {
+      return parsed.toString(16).padStart(8, "0");
+    }
+  }
+
+  throw new Error("clientid must be an 8-character lowercase hexadecimal value, optionally prefixed with !, or its unsigned decimal equivalent.");
 }
 
 function parsePositiveInt(value, fieldName) {
@@ -139,12 +151,10 @@ function buildReply(entries, requestedNodeId, minutes, limit) {
     return `Sorry, I couldn't find any logs for node ${requestedNodeId} in the last ${minutes} minutes.`;
   }
 
-  const rendered = limitedEntries
-    .map((entry) => formatEntry(entry.tsNanos, entry.line));
-
   const truncatedNote = entries.length > limit ? `, matched ${entries.length}` : "";
-  const header = `node logs for ${requestedNodeId} (last ${minutes}m, showing ${rendered.length}${truncatedNote}${limit === MAX_LIMIT ? `, capped at max ${MAX_LIMIT}` : ""})`;
-  return [header, ...rendered].join("\n");
+  const header = `node.logs for ${requestedNodeId} (last ${minutes}m, showing ${limitedEntries.length}${truncatedNote}${limit === MAX_LIMIT ? `, capped at max ${MAX_LIMIT}` : ""})`;
+  const rows = limitedEntries.map((entry) => formatEntry(entry.tsNanos, entry.line));
+  return `${header}\n\`\`\`text\n${renderTable(rows)}\n\`\`\``;
 }
 
 async function executeNodeLogs({ robot, clientIdInput, minutes, limit }) {
@@ -192,6 +202,53 @@ function nanosToIso(tsNanos) {
   }
 }
 
+function normalizeEpochToIso(value) {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) {
+    return null;
+  }
+
+  try {
+    const epoch = BigInt(raw);
+    let ms;
+
+    if (raw.length >= 19) {
+      ms = epoch / 1000000n;
+    } else if (raw.length >= 16) {
+      ms = epoch / 1000n;
+    } else if (raw.length >= 13) {
+      ms = epoch;
+    } else {
+      ms = epoch * 1000n;
+    }
+
+    return new Date(Number(ms)).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function parseTimestampToIso(value, fallbackNanos) {
+  if (value == null || value === "") {
+    return nanosToIso(fallbackNanos);
+  }
+
+  if (typeof value === "number" || (typeof value === "string" && /^\d+$/.test(value.trim()))) {
+    return normalizeEpochToIso(value) ?? nanosToIso(fallbackNanos);
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return nanosToIso(fallbackNanos);
+  }
+
+  return parsed.toISOString();
+}
+
+function formatDisplayTimestamp(isoTime) {
+  return isoTime.replace(".000Z", "Z").replace(/\.\d{3}Z$/, "Z").replace("T", " ");
+}
+
 function parseLogLine(line) {
   try {
     return JSON.parse(line);
@@ -200,16 +257,50 @@ function parseLogLine(line) {
   }
 }
 
+function truncateCell(value, width) {
+  const normalized = String(value ?? "-").replace(/\s+/g, " ").trim() || "-";
+  if (normalized.length <= width) {
+    return normalized;
+  }
+  if (width <= 1) {
+    return normalized.slice(0, width);
+  }
+  return `${normalized.slice(0, width - 1)}…`;
+}
+
+function padCell(value, width) {
+  return truncateCell(value, width).padEnd(width, " ");
+}
+
+function renderTable(rows) {
+  const columns = [
+    { key: "time", label: "time", width: 20 },
+    { key: "level", label: "lvl", width: 5 },
+    { key: "clientId", label: "client", width: 16 },
+    { key: "action", label: "act", width: 7 },
+    { key: "topic", label: "topic", width: 34 },
+    { key: "msg", label: "msg", width: 48 },
+  ];
+
+  const header = columns.map((column) => padCell(column.label, column.width)).join(" ");
+  const lines = rows.map((row) =>
+    columns.map((column) => padCell(row[column.key], column.width)).join(" "),
+  );
+
+  return [header, ...lines].join("\n");
+}
+
 function formatEntry(tsNanos, line) {
   const parsed = parseLogLine(line);
-  const isoTime = parsed.time ? new Date(parsed.time).toISOString() : nanosToIso(tsNanos);
-  const level = parsed.level ?? "-";
-  const clientId = parsed.clientid ?? "-";
-  const action = parsed.action ?? "-";
-  const topic = parsed.topic ?? "-";
-  const msg = String(parsed.msg ?? line).replace(/\s+/g, " ").trim();
-
-  return `${isoTime} | ${level} | ${clientId} | ${action} | ${topic} | ${msg}`;
+  const isoTime = parseTimestampToIso(parsed.time, tsNanos);
+  return {
+    time: formatDisplayTimestamp(isoTime),
+    level: parsed.level ?? "-",
+    clientId: parsed.clientid ?? "-",
+    action: parsed.action ?? "-",
+    topic: parsed.topic ?? "-",
+    msg: parsed.msg ?? line,
+  };
 }
 
 function parseQueryRangeResult(payload) {
@@ -305,11 +396,18 @@ export default (robot) => {
         limit = MAX_LIMIT;
       }
 
-      return executeNodeLogs({
+      const reply = await executeNodeLogs({
         robot,
         clientIdInput: ctx.args.clientid,
         minutes,
         limit,
+      });
+
+      return deliverPossiblyViaDm({
+        robot,
+        ctx,
+        text: reply,
+        commandName: "node.logs",
       });
     },
   });
