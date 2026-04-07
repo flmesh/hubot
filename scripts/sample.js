@@ -26,10 +26,19 @@ export default (robot) => {
 
   // Verify that the bot can see the current channel / guild.
   robot.respond(/where am i\??$/i, (msg) => {
+    const raw = msg.message.user?.message ?? msg.message.rawMessage;
+    const inDm = !raw?.guildId;
+    if (inDm) {
+      const user =
+        raw?.author?.globalName ?? raw?.author?.username ?? "unknown user";
+      msg.reply(`I'm in **DM with ${user}**`);
+      return;
+    }
+
     const channel =
-      msg.message.rawMessage?.channel?.name ?? msg.message.room ?? "unknown";
+      raw?.channel?.name ?? raw?.channelId ?? msg.message.room ?? "unknown";
     const guild =
-      msg.message.rawMessage?.guild?.name ?? "DM";
+      raw?.guild?.name ?? raw?.guildId ?? "unknown guild";
     msg.reply(`I'm in **${guild}** › **#${channel}**`);
   });
 };
