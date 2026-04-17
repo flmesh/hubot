@@ -2,3 +2,5 @@ queue_rules:
   - name: default
     batch_size: 5
     batch_max_wait_time: 5 m
+merge_protections_settings:
+  reporting_method: check-runs
