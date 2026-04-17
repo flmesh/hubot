@@ -16,6 +16,6 @@
     "@hubot-friends/hubot-discord": "^4.2.0",
     "hubot": "^14.1.0",
     "hubot-redis-brain": "^3.0.1",
-    "redis": "^4.6.10"
+    "redis": "^5.0.0"
   }
 }
