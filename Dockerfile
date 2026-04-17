@@ -6,7 +6,7 @@
 # ────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: dependency installation ────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # ── Stage 2: final runtime image ─────────────────────────────────────────────
-FROM node:22-alpine AS final
+FROM node:24-alpine AS final
 
 # OCI image labels (values are injected by the GitHub Actions workflow).
 ARG CREATED
