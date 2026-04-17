@@ -1,0 +1,4 @@
+queue_rules:
+  - name: default
+    batch_size: 5
+    batch_max_wait_time: 5 m
