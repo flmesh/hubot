@@ -1,6 +1,6 @@
 {
   "name": "hubot-discord",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hubot chatbot connected to Discord, containerised and published via GitHub Actions",
   "private": true,
   "type": "module",
