@@ -61,6 +61,13 @@ cp .env.example .env
 | `LOKI_USERNAME` | no | — | Optional Loki basic auth username |
 | `LOKI_PASSWORD` | no | — | Optional Loki basic auth password |
 | `NODE_LOGS_CACHE_TTL_SECONDS` | no | `30` | Redis cache TTL for `node.logs` replies; set `0` to disable |
+| `MONGO_HOST` | no | `host.docker.internal` | MongoDB host used when `MONGO_URL` is not set |
+| `MONGO_PORT` | no | `27017` | MongoDB port used when `MONGO_URL` is not set |
+| `MONGO_USERNAME` | no | — | MongoDB username used when `MONGO_URL` is not set |
+| `MONGO_PASSWORD` | no | — | MongoDB password used when `MONGO_URL` is not set |
+| `MONGO_AUTH_SOURCE` | no | `mqtt` | MongoDB auth source used when `MONGO_URL` is not set |
+| `MONGO_URL` | no | — | Optional full MongoDB connection string override for the `mqtt` account commands |
+| `MONGO_DB_NAME` | no | `mqtt` | MongoDB database name used by the `mqtt` account commands |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
 
@@ -198,3 +205,30 @@ Behavior:
 > **Adapter note:** The Discord adapter is loaded by its full npm package name
 > `@hubot-friends/hubot-discord`. Do **not** use the short alias `discord` – Hubot
 > will fail to resolve the module.
+
+## Built-In MQTT Account Commands
+
+This repository includes an initial MongoDB-backed MQTT account workflow for
+EMQX.
+
+Supported command forms:
+
+```text
+hubot mqtt.request username:<username>
+hubot mqtt.my-account
+hubot mqtt.rotate
+```
+
+Behavior:
+
+- `mqtt.request` validates the requested username against `username_policy`,
+  loads the current default profile, provisions the account in MongoDB, and
+  sends the generated password by DM.
+- `mqtt.my-account` shows the caller's current MQTT username, status, profile,
+  and creation time.
+- `mqtt.rotate` rotates the caller's password and sends the new password by DM.
+- The commands can either use `MONGO_URL` directly or construct a connection
+  string from `MONGO_HOST`, `MONGO_PORT`, `MONGO_USERNAME`, `MONGO_PASSWORD`,
+  `MONGO_AUTH_SOURCE`, and `MONGO_DB_NAME`.
+- The discrete settings are the recommended path because Hubot safely encodes
+  the MongoDB username and password when building the URI.

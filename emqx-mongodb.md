@@ -56,7 +56,7 @@ Example document:
   "is_superuser": false,
   "discord_user_id": "123456789012345678",
   "discord_tag": "user#1234",
-  "profile": "lws_only",
+  "profile": "lonewolf",
   "status": "active",
   "created_at": "2026-04-18T16:30:00Z",
   "created_by": "hubot"

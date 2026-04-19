@@ -26,6 +26,13 @@ services:
       LOKI_USERNAME: ${LOKI_USERNAME:-}
       LOKI_PASSWORD: ${LOKI_PASSWORD:-}
       NODE_LOGS_CACHE_TTL_SECONDS: ${NODE_LOGS_CACHE_TTL_SECONDS:-30}
+      MONGO_HOST: ${MONGO_HOST:-host.docker.internal}
+      MONGO_PORT: ${MONGO_PORT:-27017}
+      MONGO_USERNAME: ${MONGO_USERNAME:-}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-}
+      MONGO_AUTH_SOURCE: ${MONGO_AUTH_SOURCE:-mqtt}
+      MONGO_URL: ${MONGO_URL:-}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-mqtt}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
