@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/flmesh/hubot/compare/v1.0.0...v1.0.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* **node-trace:** simplify command description for clarity ([8ad963f](https://github.com/flmesh/hubot/commit/8ad963f682ad8990a655efac5e680eecd0fe2bcf))
+
 ## 1.0.0 (2026-04-07)
 
 
