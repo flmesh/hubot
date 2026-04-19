@@ -21,7 +21,7 @@
 ## Prerequisites
 
 | Tool | Version |
-|------|---------|
+| ---- | ------- |
 | Docker | 24+ |
 | Docker Compose | v2+ |
 | Node.js (local dev only) | 22 LTS |
@@ -50,7 +50,7 @@ cp .env.example .env
 ```
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
+| -------- | -------- | ------- | ----------- |
 | `HUBOT_DISCORD_TOKEN` | **yes** | — | Discord bot token |
 | `HUBOT_NAME` | no | `hubot` | The name the bot responds to |
 | `HUBOT_OWNER` | no | — | Owner name shown in help |
@@ -121,7 +121,7 @@ npm run dev
 The workflow at `.github/workflows/docker-publish.yml` runs on:
 
 | Trigger | Build | Push to GHCR |
-|---------|-------|--------------|
+| ------- | ----- | ------------ |
 | Pull request targeting `main` | ✅ | ❌ |
 | Push to `main` | ✅ | ✅ |
 | Push of a `v*` tag | ✅ | ✅ |
