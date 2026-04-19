@@ -1,8 +1,14 @@
-import { deliverPossiblyViaDm } from "./dm-delivery.js";
+import { deliverDirectMessageToUserId, deliverPossiblyViaDm } from "./dm-delivery.js";
 import { buildPasswordMaterial } from "./lib/mqtt-auth.js";
 import { getMqttCollections } from "./lib/mqtt-db.js";
+import { ensureAdminRole } from "./lib/mqtt-perms.js";
 import { validateUsernamePolicy } from "./lib/mqtt-policy.js";
-import { buildAclDocuments, getDefaultProfile } from "./lib/mqtt-profiles.js";
+import {
+  buildAclDocuments,
+  getDefaultProfile,
+  getProfileByName,
+  replaceProfileManagedAcls,
+} from "./lib/mqtt-profiles.js";
 
 function getRawMessage(ctx) {
   return ctx?.context?.message?.user?.message ?? null;
@@ -192,6 +198,126 @@ async function rotateMyPassword({ robot, ctx }) {
   return { username: user.username, password, profileName: user.profile ?? "unset" };
 }
 
+async function getUserByUsernameOrThrow(collections, username) {
+  const normalized = String(username ?? "").trim().toLowerCase();
+  if (!normalized) {
+    throw new Error("username is required");
+  }
+
+  const user = await collections.users.findOne({ username: normalized });
+  if (!user) {
+    throw new Error(`MQTT account not found: ${normalized}`);
+  }
+
+  return user;
+}
+
+async function getAccountWhois({ ctx }) {
+  ensureAdminRole(ctx);
+  const collections = await getMqttCollections();
+  const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
+
+  return [
+    `Username: ${user.username}`,
+    `Status: ${user.status ?? "unknown"}`,
+    `Profile: ${user.profile ?? "unset"}`,
+    `Discord User ID: ${user.discord_user_id ?? "unknown"}`,
+    `Discord Tag: ${user.discord_tag ?? "unknown"}`,
+    `Created: ${user.created_at ? new Date(user.created_at).toISOString() : "unknown"}`,
+    `Updated: ${user.updated_at ? new Date(user.updated_at).toISOString() : "never"}`,
+  ].join("\n");
+}
+
+async function updateAccountStatus({ robot, ctx, status }) {
+  ensureAdminRole(ctx);
+  const { discordTag } = getDiscordIdentity(ctx);
+  const collections = await getMqttCollections();
+  const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
+  const now = new Date();
+
+  await collections.users.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        status,
+        updated_at: now,
+        updated_by: discordTag,
+      },
+    },
+  );
+
+  robot.logger.info(`mqtt.admin status=${status} username=${user.username} by=${discordTag}`);
+  return `MQTT account ${user.username} is now ${status}.`;
+}
+
+async function rotateUserPassword({ robot, ctx, targetUsername }) {
+  const { discordTag } = getDiscordIdentity(ctx);
+  const collections = await getMqttCollections();
+  const user = await getUserByUsernameOrThrow(collections, targetUsername);
+  const { password, salt, passwordHash } = buildPasswordMaterial();
+  const now = new Date();
+
+  await collections.users.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        password_hash: passwordHash,
+        salt,
+        updated_at: now,
+        updated_by: discordTag,
+      },
+    },
+  );
+
+  robot.logger.info(`mqtt.admin rotate username=${user.username} by=${discordTag}`);
+  return {
+    username: user.username,
+    password,
+    profileName: user.profile ?? "unset",
+    discordUserId: user.discord_user_id ?? null,
+  };
+}
+
+async function setUserProfile({ robot, ctx }) {
+  ensureAdminRole(ctx);
+  const { discordTag } = getDiscordIdentity(ctx);
+  const collections = await getMqttCollections();
+  const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
+  const profileName = String(ctx.args.profile ?? "").trim().toLowerCase();
+  if (!profileName) {
+    throw new Error("profile is required");
+  }
+
+  const profile = await getProfileByName(collections, profileName);
+  if (!profile) {
+    throw new Error(`profile not found: ${profileName}`);
+  }
+  if (profile.status !== "active") {
+    throw new Error(`profile is not active: ${profileName}`);
+  }
+
+  const now = new Date();
+  await replaceProfileManagedAcls({
+    collections,
+    username: user.username,
+    profile,
+  });
+
+  await collections.users.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        profile: profile.name,
+        updated_at: now,
+        updated_by: discordTag,
+      },
+    },
+  );
+
+  robot.logger.info(`mqtt.admin set-profile username=${user.username} profile=${profile.name} by=${discordTag}`);
+  return `MQTT account ${user.username} is now assigned to profile ${profile.name}.`;
+}
+
 function wrapHandler(handler) {
   return async (ctx) => {
     try {
@@ -255,17 +381,50 @@ export default (robot) => {
 
   robot.commands.register({
     id: "mqtt.rotate",
-    description: "Rotate your MQTT account password",
+    description: "Rotate your MQTT account password, or rotate another user's account if you are an admin",
     aliases: [
       "mqtt rotate",
       "rotate mqtt password",
     ],
+    args: {
+      username: { type: "string", required: false },
+    },
     confirm: "always",
     examples: [
       "mqtt.rotate",
+      "mqtt.rotate username:jbouse",
+      "mqtt.rotate --username jbouse",
       "mqtt.rotate --help",
     ],
     handler: wrapHandler(async (ctx) => {
+      if (ctx.args.username) {
+        ensureAdminRole(ctx);
+        const result = await rotateUserPassword({
+          robot,
+          ctx,
+          targetUsername: ctx.args.username,
+        });
+
+        try {
+          await deliverDirectMessageToUserId({
+            robot,
+            userId: result.discordUserId,
+            text: formatCredentialReply({
+              username: result.username,
+              password: result.password,
+              profileName: result.profileName,
+              action: "rotated",
+            }),
+            commandName: "mqtt.rotate",
+          });
+
+          return `Password rotated for ${result.username}. I sent the new credentials to the account owner via DM.`;
+        } catch (error) {
+          robot.logger.warn(`mqtt.rotate owner DM delivery failed for ${result.username}: ${error.message}`);
+          return `Password rotated for ${result.username}, but I could not DM the account owner. Follow up manually.`;
+        }
+      }
+
       const result = await rotateMyPassword({ robot, ctx });
       return deliverCredentials({
         robot,
@@ -277,5 +436,75 @@ export default (robot) => {
         commandName: "mqtt.rotate",
       });
     }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.whois",
+    description: "Show admin details for an MQTT account",
+    aliases: [
+      "mqtt whois",
+      "whois mqtt",
+    ],
+    args: {
+      username: { type: "string", required: true },
+    },
+    confirm: "never",
+    examples: [
+      "mqtt.whois username:jbouse",
+      "mqtt.whois --username jbouse",
+    ],
+    handler: wrapHandler(async (ctx) => getAccountWhois({ ctx })),
+  });
+
+  robot.commands.register({
+    id: "mqtt.disable",
+    description: "Disable an MQTT account",
+    aliases: [
+      "mqtt disable",
+    ],
+    args: {
+      username: { type: "string", required: true },
+    },
+    confirm: "always",
+    examples: [
+      "mqtt.disable username:jbouse",
+      "mqtt.disable --username jbouse",
+    ],
+    handler: wrapHandler(async (ctx) => updateAccountStatus({ robot, ctx, status: "disabled" })),
+  });
+
+  robot.commands.register({
+    id: "mqtt.enable",
+    description: "Enable an MQTT account",
+    aliases: [
+      "mqtt enable",
+    ],
+    args: {
+      username: { type: "string", required: true },
+    },
+    confirm: "always",
+    examples: [
+      "mqtt.enable username:jbouse",
+      "mqtt.enable --username jbouse",
+    ],
+    handler: wrapHandler(async (ctx) => updateAccountStatus({ robot, ctx, status: "active" })),
+  });
+
+  robot.commands.register({
+    id: "mqtt.set-profile",
+    description: "Assign an MQTT account to a different profile",
+    aliases: [
+      "mqtt set-profile",
+    ],
+    args: {
+      username: { type: "string", required: true },
+      profile: { type: "string", required: true },
+    },
+    confirm: "always",
+    examples: [
+      "mqtt.set-profile username:jbouse profile:lonewolf",
+      "mqtt.set-profile --username jbouse --profile lonewolf",
+    ],
+    handler: wrapHandler(async (ctx) => setUserProfile({ robot, ctx })),
   });
 };

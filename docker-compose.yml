@@ -33,6 +33,8 @@ services:
       MONGO_AUTH_SOURCE: ${MONGO_AUTH_SOURCE:-mqtt}
       MONGO_URL: ${MONGO_URL:-}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-mqtt}
+      MQTT_ADMIN_ROLE_IDS: ${MQTT_ADMIN_ROLE_IDS:-}
+      MQTT_ADMIN_ROLE_NAMES: ${MQTT_ADMIN_ROLE_NAMES:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
