@@ -456,7 +456,7 @@ async function executeNodeTrace({ robot, fromInput, toInput, idInput, minutes, l
 export default (robot) => {
   robot.commands.register({
     id: "node.trace",
-    description: "Trace message events by from/to Meshtastic node IDs or Floodgate message ID",
+    description: "Trace message events by from/to Meshtastic node IDs or message ID",
     aliases: [
       "node trace",
       "trace node",
