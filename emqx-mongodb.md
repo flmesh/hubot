@@ -278,11 +278,11 @@ Only users with the designated Discord admin role (for example “MQTT Admin”)
 - **`/mqtt set-profile <username> <profile>`** – Changes the administrative profile for an existing account.  Hubot updates the `profile` field in `users` and may update the corresponding ACL rules if profile templates are used.
 - **`/mqtt profile list`** – Lists available profiles and highlights which one is the default.
 - **`/mqtt profile show <profile>`** – Displays the stored rules and metadata for a profile.
-- **`/mqtt profile create <profile>`** – Creates a new profile definition and its ACL template.
-- **`/mqtt profile update <profile>`** – Updates a profile’s metadata or ACL template.
-- **`/mqtt profile disable <profile>`** – Prevents a profile from being assigned to newly provisioned accounts.
-- **`/mqtt profile enable <profile>`** – Re-enables a previously disabled profile.
-- **`/mqtt profile set-default <profile>`** – Marks one profile as the default used for new accounts.
+- **`/mqtt profile create <profile>`** – Creates a new profile definition and its ACL template. Planned for a later phase.
+- **`/mqtt profile update <profile>`** – Updates a profile’s metadata or ACL template. Planned for a later phase.
+- **`/mqtt profile disable <profile>`** – Prevents a profile from being assigned to newly provisioned accounts. Planned for a later phase.
+- **`/mqtt profile enable <profile>`** – Re-enables a previously disabled profile. Planned for a later phase.
+- **`/mqtt profile set-default <profile>`** – Marks one profile as the default used for new accounts. Planned for a later phase.
 - **`/mqtt profile apply <profile>`** – Reapplies the current ACL template for a profile to users already assigned to it.
 
 ## 8. Hubot Commands Implementation
@@ -377,6 +377,14 @@ Finds the record in `users` and displays the Discord ownership and status.
 ### `/mqtt set-profile <username> <profile>` (Admin)
 
 Updates the user’s `profile` field and regenerates their ACL rules from the selected profile template.
+
+### `/mqtt profile list` (Admin)
+
+Lists configured profiles in name order and includes whether each profile is active and whether it is the current default.
+
+### `/mqtt profile show <profile>` (Admin)
+
+Returns the selected profile’s metadata and ACL rules for administrator review.
 
 ### `/mqtt profile set-default <profile>` (Admin)
 

@@ -226,6 +226,9 @@ hubot mqtt.whois username:<username>
 hubot mqtt.disable username:<username>
 hubot mqtt.enable username:<username>
 hubot mqtt.set-profile username:<username> profile:<profile>
+hubot mqtt.profile-list
+hubot mqtt.profile-show profile:<profile>
+hubot mqtt.profile-apply profile:<profile>
 ```
 
 Behavior:
@@ -242,6 +245,11 @@ Behavior:
 - `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and `mqtt.set-profile` are
   admin-only and require the caller to hold a configured
   Discord role from `MQTT_ADMIN_ROLE_IDS` or `MQTT_ADMIN_ROLE_NAMES`.
+- `mqtt.profile-list` lists stored profiles, their status, default flag, and
+  rule counts.
+- `mqtt.profile-show` displays a profile's metadata and ACL template rules.
+- `mqtt.profile-apply` is admin-only and reapplies the selected active profile
+  template to all accounts currently assigned to that profile.
 - `help`, `help <prefix>`, and `<command> --help` are provided by Hubot's
   command bus and currently list registered commands without filtering by the
   caller's Discord role. Access control still applies when a protected command

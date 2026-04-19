@@ -128,8 +128,56 @@ function createCollections() {
     return Object.entries(filter).every(([key, value]) => document?.[key] === value);
   }
 
+  function buildCursor(documents) {
+    return {
+      sort(sortSpec) {
+        const [[field, direction]] = Object.entries(sortSpec);
+        const multiplier = direction >= 0 ? 1 : -1;
+        const sorted = [...documents].sort((left, right) => {
+          if (left?.[field] === right?.[field]) {
+            return 0;
+          }
+          return left?.[field] > right?.[field] ? multiplier : -multiplier;
+        });
+        return buildCursor(sorted);
+      },
+      async toArray() {
+        return [...documents];
+      },
+    };
+  }
+
   return {
     state,
+    profiles: {
+      async findOne(filter) {
+        return state.profiles.find((entry) => matches(entry, filter)) ?? null;
+      },
+      find(filter = {}) {
+        return buildCursor(state.profiles.filter((entry) => matches(entry, filter)));
+      },
+    },
+    mqttAcl: {
+      async insertMany(documents) {
+        state.mqttAcl.push(...documents);
+      },
+      async deleteMany(filter) {
+        state.mqttAcl = state.mqttAcl.filter((entry) => !matches(entry, filter));
+      },
+    },
+    requests: {
+      async findOne(filter) {
+        return state.requests.find((entry) => matches(entry, filter)) ?? null;
+      },
+      async insertOne(document) {
+        state.requests.push(document);
+      },
+    },
+    usernamePolicy: {
+      async findOne(filter) {
+        return state.usernamePolicy.find((entry) => matches(entry, filter)) ?? null;
+      },
+    },
     users: {
       async findOne(filter) {
         return state.users.find((entry) => matches(entry, filter)) ?? null;
@@ -153,31 +201,8 @@ function createCollections() {
           state.users.splice(index, 1);
         }
       },
-    },
-    profiles: {
-      async findOne(filter) {
-        return state.profiles.find((entry) => matches(entry, filter)) ?? null;
-      },
-    },
-    mqttAcl: {
-      async insertMany(documents) {
-        state.mqttAcl.push(...documents);
-      },
-      async deleteMany(filter) {
-        state.mqttAcl = state.mqttAcl.filter((entry) => !matches(entry, filter));
-      },
-    },
-    requests: {
-      async findOne(filter) {
-        return state.requests.find((entry) => matches(entry, filter)) ?? null;
-      },
-      async insertOne(document) {
-        state.requests.push(document);
-      },
-    },
-    usernamePolicy: {
-      async findOne(filter) {
-        return state.usernamePolicy.find((entry) => matches(entry, filter)) ?? null;
+      find(filter = {}) {
+        return buildCursor(state.users.filter((entry) => matches(entry, filter)));
       },
     },
     mqttAudit: {
@@ -366,4 +391,97 @@ test("mqtt.set-profile replaces profile-managed ACLs and updates the stored prof
   assert.equal(collections.state.users[0].profile, "lonewolf");
   assert.equal(collections.state.mqttAcl.length, 1);
   assert.equal(collections.state.mqttAcl[0].source_profile, "lonewolf");
+});
+
+test("mqtt.profile-list shows configured profiles for admins", async () => {
+  const { commands } = setup();
+
+  const reply = await commands.get("mqtt.profile-list").handler(createContext({
+    roleNames: ["Mesh Admin"],
+  }));
+
+  assert.match(reply, /MQTT profiles:/);
+  assert.match(reply, /default \[default, active\]/);
+  assert.match(reply, /lonewolf \[active\]/);
+});
+
+test("mqtt.profile-show returns metadata and rules for a profile", async () => {
+  const { commands } = setup();
+
+  const reply = await commands.get("mqtt.profile-show").handler(createContext({
+    args: { profile: "default" },
+    roleNames: ["Mesh Admin"],
+  }));
+
+  assert.match(reply, /Name: default/);
+  assert.match(reply, /Default: yes/);
+  assert.match(reply, /Rules:/);
+  assert.match(reply, /deny all msh\/US\/FL\/LWS\/#/);
+});
+
+test("mqtt.profile-apply reapplies the template to all users assigned to the profile", async () => {
+  const { collections, commands } = setup();
+  collections.state.users.push(
+    {
+      _id: "1",
+      username: "jbouse",
+      profile: "default",
+      status: "active",
+      discord_user_id: "600",
+      created_at: new Date("2026-04-19T00:00:00.000Z"),
+    },
+    {
+      _id: "2",
+      username: "jsmith",
+      profile: "default",
+      status: "disabled",
+      discord_user_id: "601",
+      created_at: new Date("2026-04-19T00:00:00.000Z"),
+    },
+    {
+      _id: "3",
+      username: "lonewolf",
+      profile: "lonewolf",
+      status: "active",
+      discord_user_id: "602",
+      created_at: new Date("2026-04-19T00:00:00.000Z"),
+    },
+  );
+  collections.state.mqttAcl.push(
+    {
+      username: "jbouse",
+      permission: "allow",
+      action: "all",
+      topics: ["old/topic/#"],
+      source_profile: "default",
+      managed_by: "hubot-profile",
+    },
+    {
+      username: "jsmith",
+      permission: "allow",
+      action: "all",
+      topics: ["old/topic/#"],
+      source_profile: "default",
+      managed_by: "hubot-profile",
+    },
+    {
+      username: "lonewolf",
+      permission: "allow",
+      action: "all",
+      topics: ["msh/US/FL/LWS/#"],
+      source_profile: "lonewolf",
+      managed_by: "hubot-profile",
+    },
+  );
+
+  const reply = await commands.get("mqtt.profile-apply").handler(createContext({
+    args: { profile: "default" },
+    roleNames: ["Mesh Admin"],
+  }));
+
+  assert.equal(reply, "Reapplied profile default to 2 MQTT accounts.");
+  const defaultAclRows = collections.state.mqttAcl.filter((entry) => entry.source_profile === "default");
+  assert.equal(defaultAclRows.length, 4);
+  assert.ok(defaultAclRows.every((entry) => ["jbouse", "jsmith"].includes(entry.username)));
+  assert.equal(collections.state.mqttAcl.filter((entry) => entry.source_profile === "lonewolf").length, 1);
 });

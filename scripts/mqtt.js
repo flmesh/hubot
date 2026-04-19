@@ -8,6 +8,8 @@ import {
   buildAclDocuments,
   getDefaultProfile,
   getProfileByName,
+  listProfiles,
+  reapplyProfileToAssignedUsers,
   replaceProfileManagedAcls,
 } from "./lib/mqtt-profiles.js";
 
@@ -314,6 +316,92 @@ async function setUserProfile({ robot, ctx }) {
   return `MQTT account ${user.username} is now assigned to profile ${profile.name}.`;
 }
 
+function normalizeProfileName(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    throw new Error("profile is required");
+  }
+  return normalized;
+}
+
+function formatProfileRules(rules) {
+  if (!Array.isArray(rules) || rules.length === 0) {
+    return "  (no rules)";
+  }
+
+  return rules.map((rule, index) => {
+    const topics = Array.isArray(rule.topics) && rule.topics.length > 0
+      ? rule.topics.join(", ")
+      : "(none)";
+    return `  ${index + 1}. ${rule.permission} ${rule.action} ${topics}`;
+  }).join("\n");
+}
+
+async function getProfileList({ ctx }) {
+  ensureAdminRole(ctx);
+  const collections = await getMqttCollections();
+  const profiles = await listProfiles(collections);
+
+  if (profiles.length === 0) {
+    return "No MQTT profiles are configured.";
+  }
+
+  return [
+    "MQTT profiles:",
+    "",
+    ...profiles.map((profile) => {
+      const flags = [
+        profile.is_default ? "default" : null,
+        profile.status ?? "unknown",
+      ].filter(Boolean).join(", ");
+      const summary = profile.description ? ` - ${profile.description}` : "";
+      const ruleCount = Array.isArray(profile.rules) ? profile.rules.length : 0;
+      return `- ${profile.name} [${flags}] (${ruleCount} rule${ruleCount === 1 ? "" : "s"})${summary}`;
+    }),
+  ].join("\n");
+}
+
+async function getProfileShow({ ctx }) {
+  ensureAdminRole(ctx);
+  const collections = await getMqttCollections();
+  const profileName = normalizeProfileName(ctx.args.profile);
+  const profile = await getProfileByName(collections, profileName);
+  if (!profile) {
+    throw new Error(`profile not found: ${profileName}`);
+  }
+
+  return [
+    `Name: ${profile.name}`,
+    `Status: ${profile.status ?? "unknown"}`,
+    `Default: ${profile.is_default ? "yes" : "no"}`,
+    `Description: ${profile.description ?? ""}`,
+    `Created: ${profile.created_at ? new Date(profile.created_at).toISOString() : "unknown"}`,
+    `Updated: ${profile.updated_at ? new Date(profile.updated_at).toISOString() : "unknown"}`,
+    "Rules:",
+    formatProfileRules(profile.rules),
+  ].join("\n");
+}
+
+async function applyProfileTemplate({ ctx }) {
+  ensureAdminRole(ctx);
+  const collections = await getMqttCollections();
+  const profileName = normalizeProfileName(ctx.args.profile);
+  const profile = await getProfileByName(collections, profileName);
+  if (!profile) {
+    throw new Error(`profile not found: ${profileName}`);
+  }
+  if (profile.status !== "active") {
+    throw new Error(`profile is not active: ${profileName}`);
+  }
+
+  const { matchedUsers } = await reapplyProfileToAssignedUsers({
+    collections,
+    profile,
+  });
+
+  return `Reapplied profile ${profile.name} to ${matchedUsers} MQTT account${matchedUsers === 1 ? "" : "s"}.`;
+}
+
 function buildAuditMetadata(commandId, ctx, result, error) {
   const args = ctx?.args ?? {};
 
@@ -548,6 +636,54 @@ export function registerMqttCommands(robot, {
       "mqtt.set-profile --username jbouse --profile lonewolf",
     ],
     handler: wrapHandler("mqtt.set-profile", async (ctx) => setUserProfile({ robot, ctx }), { auditEvent }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.profile-list",
+    description: "List available MQTT profiles",
+    aliases: [
+      "mqtt profile list",
+    ],
+    confirm: "never",
+    examples: [
+      "mqtt.profile-list",
+      "mqtt.profile-list --help",
+    ],
+    handler: wrapHandler("mqtt.profile-list", async (ctx) => getProfileList({ ctx }), { auditEvent }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.profile-show",
+    description: "Show metadata and rules for an MQTT profile",
+    aliases: [
+      "mqtt profile show",
+    ],
+    args: {
+      profile: { type: "string", required: true },
+    },
+    confirm: "never",
+    examples: [
+      "mqtt.profile-show profile:default",
+      "mqtt.profile-show --profile default",
+    ],
+    handler: wrapHandler("mqtt.profile-show", async (ctx) => getProfileShow({ ctx }), { auditEvent }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.profile-apply",
+    description: "Reapply a profile template to all users assigned to that profile",
+    aliases: [
+      "mqtt profile apply",
+    ],
+    args: {
+      profile: { type: "string", required: true },
+    },
+    confirm: "always",
+    examples: [
+      "mqtt.profile-apply profile:default",
+      "mqtt.profile-apply --profile default",
+    ],
+    handler: wrapHandler("mqtt.profile-apply", async (ctx) => applyProfileTemplate({ ctx }), { auditEvent }),
   });
 }
 
