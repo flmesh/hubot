@@ -121,6 +121,9 @@ npm start
 
 # Start with verbose logging
 npm run dev
+
+# Run tests
+npm test
 ```
 
 ---
@@ -239,8 +242,15 @@ Behavior:
 - `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and `mqtt.set-profile` are
   admin-only and require the caller to hold a configured
   Discord role from `MQTT_ADMIN_ROLE_IDS` or `MQTT_ADMIN_ROLE_NAMES`.
+- `help`, `help <prefix>`, and `<command> --help` are provided by Hubot's
+  command bus and currently list registered commands without filtering by the
+  caller's Discord role. Access control still applies when a protected command
+  is executed.
 - The commands can either use `MONGO_URL` directly or construct a connection
   string from `MONGO_HOST`, `MONGO_PORT`, `MONGO_USERNAME`, `MONGO_PASSWORD`,
   `MONGO_AUTH_SOURCE`, and `MONGO_DB_NAME`.
 - The discrete settings are the recommended path because Hubot safely encodes
   the MongoDB username and password when building the URI.
+- Command usage is also written to the `mqtt_audit` collection with phases such
+  as `attempted`, `confirm_requested`, `confirmed`, `cancelled`, `succeeded`,
+  `denied`, and `failed`.

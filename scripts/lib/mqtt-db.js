@@ -1,6 +1,7 @@
 import { MongoClient } from "mongodb";
 
 let clientPromise;
+let collectionsOverride = null;
 
 function getMongoDbNameFromEnv() {
   return process.env.MONGO_DB_NAME?.trim() || "mqtt";
@@ -57,13 +58,26 @@ export async function getMqttDb() {
 }
 
 export async function getMqttCollections() {
+  if (typeof collectionsOverride === "function") {
+    return collectionsOverride();
+  }
+
   const db = await getMqttDb();
   return {
     db,
     users: db.collection("users"),
     profiles: db.collection("profiles"),
     mqttAcl: db.collection("mqtt_acl"),
+    mqttAudit: db.collection("mqtt_audit"),
     requests: db.collection("requests"),
     usernamePolicy: db.collection("username_policy"),
   };
+}
+
+export function setMqttCollectionsOverrideForTests(provider) {
+  collectionsOverride = provider;
+}
+
+export function clearMqttCollectionsOverrideForTests() {
+  collectionsOverride = null;
 }
