@@ -17,7 +17,7 @@
     "@hubot-friends/hubot-discord": "^4.2.0",
     "hubot": "^14.1.0",
     "hubot-redis-brain": "^3.0.1",
-    "mongodb": "^6.21.0",
+    "mongodb": "^7.0.0",
     "redis": "^5.0.0"
   }
 }
