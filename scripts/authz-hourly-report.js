@@ -182,7 +182,7 @@ function buildEmbed(rows, { lookbackMinutes, topLimit }) {
 
   return new EmbedBuilder()
     .setColor(REPORT_COLOR)
-    .setTitle("EMQX AUTHZ Denial Summary")
+    .setTitle("MQTT Authorization Denial Summary")
     .setDescription(`authorization_permission_denied events for the last ${lookbackMinutes} minutes`)
     .addFields(
       { name: "Total Denials", value: String(totalDenials), inline: true },
