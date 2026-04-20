@@ -216,6 +216,12 @@ Suggested fields:
 - `banned_substrings`: case-insensitive substrings that may not appear anywhere in a username.
 - `updated_at`, `updated_by`: audit metadata for policy changes.
 
+Current implementation note:
+
+- Hubot currently enforces a fixed safe username format of leading lowercase letter followed by lowercase letters, digits, underscores, or hyphens.
+- `min_length`, `max_length`, `reserved_usernames`, and `banned_substrings` are enforced from MongoDB.
+- The `pattern` field may still be stored for documentation or future expansion, but arbitrary runtime regex evaluation is not currently used by Hubot.
+
 Example document:
 
 ```json
@@ -260,7 +266,7 @@ EMQX uses its MongoDB authentication and authorization modules to query our data
 - **Collection:** `users`  
 - **Filter:** `{ username = "${username}" }`  
 - **Password fields:** `password_hash` and `salt`  
-- **Hash algorithm:** `sha256` with salt appended to the password.
+- **Hash algorithm:** `pbkdf2` using `sha256`, `4096` iterations, and a 32-byte derived key.
 
 EMQX retrieves the record for the connecting client and compares the supplied password (hashed with the stored salt) against the stored `password_hash`.  If `is_superuser` is true, all topics are allowed; otherwise EMQX consults the authorizer.
 

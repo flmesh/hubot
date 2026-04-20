@@ -236,6 +236,10 @@ Behavior:
 - `mqtt.request` validates the requested username against `username_policy`,
   loads the current default profile, provisions the account in MongoDB, and
   sends the generated password by DM.
+- Username policy currently honors `min_length`, `max_length`,
+  `reserved_usernames`, and `banned_substrings`, while format validation is
+  intentionally fixed to lowercase letters, digits, underscores, and hyphens
+  with a leading lowercase letter.
 - `mqtt.my-account` shows the caller's current MQTT username, status, profile,
   and creation time.
 - `mqtt.rotate` rotates the caller's password and sends the new password by DM.

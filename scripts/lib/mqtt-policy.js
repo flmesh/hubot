@@ -2,6 +2,8 @@ function normalizeUsername(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+const USERNAME_FORMAT_REGEX = /^[a-z][a-z0-9_-]+$/;
+
 export function validateUsernamePolicy(username, policy) {
   const normalized = normalizeUsername(username);
 
@@ -15,9 +17,7 @@ export function validateUsernamePolicy(username, policy) {
     throw new Error(`username must be between ${minLength} and ${maxLength} characters`);
   }
 
-  const pattern = policy?.pattern ?? "^[a-z][a-z0-9_-]{2,23}$";
-  const regex = new RegExp(pattern);
-  if (!regex.test(normalized)) {
+  if (!USERNAME_FORMAT_REGEX.test(normalized)) {
     throw new Error("username must start with a lowercase letter and contain only lowercase letters, digits, underscores, or hyphens");
   }
 

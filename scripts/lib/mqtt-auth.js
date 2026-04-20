@@ -1,7 +1,10 @@
-import { createHash, randomBytes } from "node:crypto";
+import { pbkdf2Sync, randomBytes } from "node:crypto";
 
 const PASSWORD_BYTES = 18;
 const SALT_BYTES = 12;
+const PBKDF2_ITERATIONS = 4096;
+const PBKDF2_KEY_LENGTH = 32;
+const PBKDF2_DIGEST = "sha256";
 
 export function generatePassword() {
   return randomBytes(PASSWORD_BYTES).toString("base64url");
@@ -12,7 +15,13 @@ export function generateSalt() {
 }
 
 export function hashPasswordWithSalt(password, salt) {
-  return createHash("sha256").update(`${password}${salt}`, "utf8").digest("hex");
+  return pbkdf2Sync(
+    password,
+    salt,
+    PBKDF2_ITERATIONS,
+    PBKDF2_KEY_LENGTH,
+    PBKDF2_DIGEST,
+  ).toString("hex");
 }
 
 export function buildPasswordMaterial() {
