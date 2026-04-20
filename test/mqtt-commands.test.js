@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { EmbedBuilder } from "discord.js";
 
 import { clearMqttCollectionsOverrideForTests, setMqttCollectionsOverrideForTests } from "../scripts/lib/mqtt-db.js";
 import { registerMqttCommands } from "../scripts/mqtt.js";
@@ -264,6 +265,25 @@ test("mqtt.my-account reports when the caller has no account", async () => {
   assert.equal(reply, "mqtt command failed: you do not have an MQTT account");
 });
 
+test("mqtt.my-account returns an embed for an existing account", async () => {
+  const { collections, commands } = setup();
+  collections.state.users.push({
+    _id: "1",
+    username: "jbouse",
+    profile: "default",
+    status: "active",
+    discord_user_id: "505598218306977793",
+    created_at: new Date("2026-04-19T00:00:00.000Z"),
+  });
+
+  const reply = await commands.get("mqtt.my-account").handler(createContext({ guildId: null }));
+
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Account");
+  assert.equal(embed.fields.find((field) => field.name === "Username")?.value, "jbouse");
+});
+
 test("mqtt.rotate rotates the caller password for an active account", async () => {
   const { robot, collections, commands } = setup();
   collections.state.users.push({
@@ -333,8 +353,10 @@ test("mqtt.whois returns account details for admins", async () => {
     roleNames: ["Mesh Admin"],
   }));
 
-  assert.match(reply, /Username: jbouse/);
-  assert.match(reply, /Discord User ID: 600/);
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Account: jbouse");
+  assert.equal(embed.fields.find((field) => field.name === "Discord User ID")?.value, "600");
 });
 
 test("mqtt.disable and mqtt.enable update account status for admins", async () => {
@@ -400,9 +422,11 @@ test("mqtt.profile-list shows configured profiles for admins", async () => {
     roleNames: ["Mesh Admin"],
   }));
 
-  assert.match(reply, /MQTT profiles:/);
-  assert.match(reply, /default \[default, active\]/);
-  assert.match(reply, /lonewolf \[active\]/);
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Profiles");
+  assert.match(embed.description, /default/);
+  assert.match(embed.description, /lonewolf/);
 });
 
 test("mqtt.profile-show returns metadata and rules for a profile", async () => {
@@ -413,10 +437,11 @@ test("mqtt.profile-show returns metadata and rules for a profile", async () => {
     roleNames: ["Mesh Admin"],
   }));
 
-  assert.match(reply, /Name: default/);
-  assert.match(reply, /Default: yes/);
-  assert.match(reply, /Rules:/);
-  assert.match(reply, /deny all msh\/US\/FL\/LWS\/#/);
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Profile: default");
+  assert.equal(embed.fields.find((field) => field.name === "Default")?.value, "yes");
+  assert.match(embed.fields.find((field) => field.name === "Rules")?.value, /deny all msh\/US\/FL\/LWS\/#/);
 });
 
 test("mqtt.profile-apply reapplies the template to all users assigned to the profile", async () => {

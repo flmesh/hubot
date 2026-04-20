@@ -250,6 +250,9 @@ Behavior:
 - `mqtt.profile-show` displays a profile's metadata and ACL template rules.
 - `mqtt.profile-apply` is admin-only and reapplies the selected active profile
   template to all accounts currently assigned to that profile.
+- `mqtt.my-account`, `mqtt.whois`, `mqtt.profile-list`, and
+  `mqtt.profile-show` return Discord embeds when running under the Discord
+  adapter for better readability.
 - `help`, `help <prefix>`, and `<command> --help` are provided by Hubot's
   command bus and currently list registered commands without filtering by the
   caller's Discord role. Access control still applies when a protected command

@@ -2,6 +2,13 @@ import { deliverDirectMessageToUserId, deliverPossiblyViaDm } from "./dm-deliver
 import { buildPasswordMaterial } from "./lib/mqtt-auth.js";
 import { installMqttAuditBridge, recordMqttAuditEvent } from "./lib/mqtt-audit.js";
 import { getMqttCollections } from "./lib/mqtt-db.js";
+import {
+  buildMyAccountEmbed,
+  buildProfileListEmbed,
+  buildProfileShowEmbed,
+  buildWhoisEmbed,
+  summarizeCommandResult,
+} from "./lib/mqtt-discord-format.js";
 import { ensureAdminRole } from "./lib/mqtt-perms.js";
 import { validateUsernamePolicy } from "./lib/mqtt-policy.js";
 import {
@@ -158,12 +165,7 @@ async function getMyAccount(ctx) {
     throw new Error("you do not have an MQTT account");
   }
 
-  return [
-    `Username: ${user.username}`,
-    `Status: ${user.status ?? "unknown"}`,
-    `Profile: ${user.profile ?? "unset"}`,
-    `Created: ${user.created_at ? new Date(user.created_at).toISOString() : "unknown"}`,
-  ].join("\n");
+  return buildMyAccountEmbed(user);
 }
 
 async function rotateMyPassword({ robot, ctx }) {
@@ -218,15 +220,7 @@ async function getAccountWhois({ ctx }) {
   const collections = await getMqttCollections();
   const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
 
-  return [
-    `Username: ${user.username}`,
-    `Status: ${user.status ?? "unknown"}`,
-    `Profile: ${user.profile ?? "unset"}`,
-    `Discord User ID: ${user.discord_user_id ?? "unknown"}`,
-    `Discord Tag: ${user.discord_tag ?? "unknown"}`,
-    `Created: ${user.created_at ? new Date(user.created_at).toISOString() : "unknown"}`,
-    `Updated: ${user.updated_at ? new Date(user.updated_at).toISOString() : "never"}`,
-  ].join("\n");
+  return buildWhoisEmbed(user);
 }
 
 async function updateAccountStatus({ robot, ctx, status }) {
@@ -324,41 +318,12 @@ function normalizeProfileName(value) {
   return normalized;
 }
 
-function formatProfileRules(rules) {
-  if (!Array.isArray(rules) || rules.length === 0) {
-    return "  (no rules)";
-  }
-
-  return rules.map((rule, index) => {
-    const topics = Array.isArray(rule.topics) && rule.topics.length > 0
-      ? rule.topics.join(", ")
-      : "(none)";
-    return `  ${index + 1}. ${rule.permission} ${rule.action} ${topics}`;
-  }).join("\n");
-}
-
 async function getProfileList({ ctx }) {
   ensureAdminRole(ctx);
   const collections = await getMqttCollections();
   const profiles = await listProfiles(collections);
 
-  if (profiles.length === 0) {
-    return "No MQTT profiles are configured.";
-  }
-
-  return [
-    "MQTT profiles:",
-    "",
-    ...profiles.map((profile) => {
-      const flags = [
-        profile.is_default ? "default" : null,
-        profile.status ?? "unknown",
-      ].filter(Boolean).join(", ");
-      const summary = profile.description ? ` - ${profile.description}` : "";
-      const ruleCount = Array.isArray(profile.rules) ? profile.rules.length : 0;
-      return `- ${profile.name} [${flags}] (${ruleCount} rule${ruleCount === 1 ? "" : "s"})${summary}`;
-    }),
-  ].join("\n");
+  return buildProfileListEmbed(profiles);
 }
 
 async function getProfileShow({ ctx }) {
@@ -370,16 +335,7 @@ async function getProfileShow({ ctx }) {
     throw new Error(`profile not found: ${profileName}`);
   }
 
-  return [
-    `Name: ${profile.name}`,
-    `Status: ${profile.status ?? "unknown"}`,
-    `Default: ${profile.is_default ? "yes" : "no"}`,
-    `Description: ${profile.description ?? ""}`,
-    `Created: ${profile.created_at ? new Date(profile.created_at).toISOString() : "unknown"}`,
-    `Updated: ${profile.updated_at ? new Date(profile.updated_at).toISOString() : "unknown"}`,
-    "Rules:",
-    formatProfileRules(profile.rules),
-  ].join("\n");
+  return buildProfileShowEmbed(profile);
 }
 
 async function applyProfileTemplate({ ctx }) {
@@ -435,7 +391,7 @@ function wrapHandler(commandId, handler, { auditEvent = recordMqttAuditEvent } =
         phase: "succeeded",
         ctx,
         args: ctx?.args ?? {},
-        result: typeof result === "string" ? { reply_preview: result.slice(0, 250) } : null,
+        result: summarizeCommandResult(result),
         metadata: buildAuditMetadata(commandId, ctx, result, null),
       });
       return result;
