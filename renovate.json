@@ -8,6 +8,12 @@
   "semanticCommitScope": "deps",
   "packageRules": [
     {
+      "matchPackageNames": [
+        "mongodb"
+      ],
+      "allowedVersions": "<8.1.0"
+    },
+    {
       "matchUpdateTypes": [
         "major"
       ],
