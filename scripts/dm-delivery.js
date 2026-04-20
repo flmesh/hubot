@@ -112,6 +112,28 @@ async function sendDirectMessage(robot, rawMessage, text) {
   }
 }
 
+async function sendDirectMessageToUser(user, text) {
+  const parts = splitMessageForDiscord(text);
+
+  for (const part of parts) {
+    await user.send(part);
+  }
+}
+
+export async function deliverDirectMessageToUserId({ robot, userId, text, commandName }) {
+  if (!userId) {
+    throw new Error(`${commandName} DM delivery failed: missing Discord user ID`);
+  }
+
+  const client = robot?.adapter?.client;
+  if (!client?.users?.fetch) {
+    throw new Error(`${commandName} DM delivery failed: Discord client is unavailable`);
+  }
+
+  const user = await client.users.fetch(String(userId));
+  await sendDirectMessageToUser(user, text);
+}
+
 export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {
   const rawMessage = ctx?.context?.message?.user?.message;
   if (!rawMessage || isDirectMessage(rawMessage)) {

@@ -10,12 +10,14 @@
   },
   "scripts": {
     "start": "hubot --adapter @hubot-friends/hubot-discord --name \"${HUBOT_NAME:-hubot}\"",
-    "dev": "HUBOT_LOG_LEVEL=debug npm start"
+    "dev": "HUBOT_LOG_LEVEL=debug npm start",
+    "test": "node --test"
   },
   "dependencies": {
     "@hubot-friends/hubot-discord": "^4.2.0",
     "hubot": "^14.1.0",
     "hubot-redis-brain": "^3.0.1",
+    "mongodb": "^6.21.0",
     "redis": "^5.0.0"
   }
 }
