@@ -250,6 +250,12 @@ Behavior:
 - `mqtt.profile-show` displays a profile's metadata and ACL template rules.
 - `mqtt.profile-apply` is admin-only and reapplies the selected active profile
   template to all accounts currently assigned to that profile.
+- Profile templates in MongoDB now use a richer internal rule schema with
+  `who`, `action`, and topic match objects. Hubot compiles those templates into
+  the flatter `mqtt_acl` rows EMQX expects.
+- The current materializer supports `username`, `clientid`, and `ipaddress`
+  selectors plus optional `qos` and `retain` action qualifiers. Topic entries
+  are currently compiled only for filter-style matches.
 - `mqtt.my-account`, `mqtt.whois`, `mqtt.profile-list`, and
   `mqtt.profile-show` return Discord embeds when running under the Discord
   adapter for better readability.

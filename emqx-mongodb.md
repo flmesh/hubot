@@ -27,7 +27,7 @@ All MQTT‑related data lives in a single database:
 mqtt
 ```
 
-The database has five collections: `users`, `profiles`, `mqtt_acl`, `requests` and `username_policy`.
+The database has six collections: `users`, `profiles`, `mqtt_acl`, `requests`, `username_policy`, and `mqtt_audit`.
 
 ## 4. Collections
 
@@ -79,7 +79,7 @@ Required fields:
 - `description`: human-readable description for admins.
 - `status`: profile state, e.g. `active` or `disabled`.
 - `is_default`: whether this is the default profile assigned during account creation.
-- `rules`: ACL template entries Hubot copies into `mqtt_acl` when provisioning or reapplying a profile.
+- `rules`: richer ACL template entries Hubot compiles into `mqtt_acl` when provisioning or reapplying a profile.
 - `created_at`, `created_by`, `updated_at`, `updated_by`: audit metadata.
 
 Example document:
@@ -93,8 +93,18 @@ Example document:
   "rules": [
     {
       "permission": "allow",
-      "action": "all",
-      "topics": ["msh/US/FL/LWS/#"]
+      "who": {
+        "username": "${username}"
+      },
+      "action": {
+        "type": "all"
+      },
+      "topics": [
+        {
+          "match": "filter",
+          "value": "msh/US/FL/LWS/#"
+        }
+      ]
     }
   ],
   "created_at": "2026-04-19T12:00:00Z",
@@ -103,6 +113,13 @@ Example document:
   "updated_by": "admin#9999"
 }
 ```
+
+Notes on the profile rule model:
+
+- `profiles.rules` is the canonical policy template format managed by Hubot.
+- `mqtt_acl` remains the flattened, EMQX-facing materialized form queried by the MongoDB authorizer.
+- The current Hubot materializer supports selector fields `username`, `clientid`, and `ipaddress`; action type `publish`, `subscribe`, or `all`; optional `qos` and `retain`; and filter-style topic entries.
+- The richer template format leaves room for future expansion, even though not every EMQX ACL language feature is materialized today.
 
 Indexes:
 
@@ -123,6 +140,8 @@ One document per ACL rule.  Required fields:
 - `permission`: either `allow` or `deny`.
 - `action`: usually `all` to apply to both publish and subscribe.
 - `topics`: list of topic patterns covered by this rule.
+- Optional selector fields such as `clientid` and `ipaddress` may also be present when a profile rule is materialized with additional constraints.
+- Optional `qos` and `retain` fields may also be present.
 
 Example for a user named `lonewolf` allowed to access only the LWS subtree:
 
@@ -228,7 +247,7 @@ Example document:
 Two database users are created:
 
 - **EMQX (read‑only)** – `emqx_ro`: granted the `read` role on `mqtt`.  EMQX uses this account to query the `users` and `mqtt_acl` collections but cannot write.
-- **Hubot (read/write)** – `hubot_rw`: granted the `readWrite` role on `mqtt`.  Hubot inserts and updates documents in all five collections.
+- **Hubot (read/write)** – `hubot_rw`: granted the `readWrite` role on `mqtt`.  Hubot inserts and updates documents in all MQTT-related collections.
 
 ## 6. EMQX Integration
 
@@ -251,7 +270,7 @@ EMQX retrieves the record for the connecting client and compares the supplied pa
 - **Collection:** `mqtt_acl`  
 - **Filter:** `{ username = "${username}" }`
 
-Each document in `mqtt_acl` is evaluated in order of insertion (deny rules should be inserted before allow rules).  EMQX stops at the first matching rule, so rule order matters.
+Each document in `mqtt_acl` is evaluated in order of insertion (deny rules should be inserted before allow rules).  EMQX stops at the first matching rule, so rule order matters. Hubot preserves the order of `profiles.rules` when materializing those rows.
 
 ## 7. Authorization Model for Hubot Commands
 
@@ -317,12 +336,7 @@ Below is a high‑level outline of the MongoDB operations performed by each comm
      created_at: new Date(),
      created_by: "hubot"
    });
-   db.mqtt_acl.insertMany(profile.rules.map((rule) => ({
-     username,
-     ...rule,
-     source_profile: profile.name,
-     managed_by: "hubot-profile"
-   })));
+   db.mqtt_acl.insertMany(materialize(profile.rules, username));
    ```
 
 6. Update the request record to `approved` and set `provisioned_at`.

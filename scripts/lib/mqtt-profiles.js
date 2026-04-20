@@ -1,3 +1,5 @@
+import { formatProfileRule, materializeProfileRule } from "./mqtt-rule-templates.js";
+
 export async function getDefaultProfile(collections) {
   return collections.profiles.findOne({
     is_default: true,
@@ -26,13 +28,10 @@ export async function listProfiles(collections) {
 }
 
 export function buildAclDocuments({ username, profileName, rules }) {
-  return (rules ?? []).map((rule) => ({
+  return (rules ?? []).map((rule) => materializeProfileRule({
+    rule,
     username,
-    permission: rule.permission,
-    action: rule.action,
-    topics: rule.topics,
-    source_profile: profileName,
-    managed_by: "hubot-profile",
+    profileName,
   }));
 }
 
@@ -68,3 +67,5 @@ export async function reapplyProfileToAssignedUsers({ collections, profile }) {
     matchedUsers: users.length,
   };
 }
+
+export { formatProfileRule };

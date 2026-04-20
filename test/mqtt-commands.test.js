@@ -97,8 +97,18 @@ function createCollections() {
         status: "active",
         is_default: true,
         rules: [
-          { permission: "deny", action: "all", topics: ["msh/US/FL/LWS/#"] },
-          { permission: "allow", action: "all", topics: ["msh/US/FL/#"] },
+          {
+            permission: "deny",
+            who: { username: "${username}" },
+            action: { type: "all" },
+            topics: [{ match: "filter", value: "msh/US/FL/LWS/#" }],
+          },
+          {
+            permission: "allow",
+            who: { username: "${username}" },
+            action: { type: "all" },
+            topics: [{ match: "filter", value: "msh/US/FL/#" }],
+          },
         ],
       },
       {
@@ -106,7 +116,12 @@ function createCollections() {
         status: "active",
         is_default: false,
         rules: [
-          { permission: "allow", action: "all", topics: ["msh/US/FL/LWS/#"] },
+          {
+            permission: "allow",
+            who: { username: "${username}" },
+            action: { type: "all" },
+            topics: [{ match: "filter", value: "msh/US/FL/LWS/#" }],
+          },
         ],
       },
     ],
@@ -441,7 +456,7 @@ test("mqtt.profile-show returns metadata and rules for a profile", async () => {
   const embed = reply.toJSON();
   assert.equal(embed.title, "MQTT Profile: default");
   assert.equal(embed.fields.find((field) => field.name === "Default")?.value, "yes");
-  assert.match(embed.fields.find((field) => field.name === "Rules")?.value, /deny all msh\/US\/FL\/LWS\/#/);
+  assert.match(embed.fields.find((field) => field.name === "Rules")?.value, /\{deny, \{user, "\$\{username\}"\}, all, \["msh\/US\/FL\/LWS\/#"\]\}\./);
 });
 
 test("mqtt.profile-apply reapplies the template to all users assigned to the profile", async () => {

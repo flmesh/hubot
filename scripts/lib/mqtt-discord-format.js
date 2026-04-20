@@ -1,4 +1,5 @@
 import { EmbedBuilder } from "discord.js";
+import { formatProfileRuleAsEmqxSpec } from "./mqtt-rule-templates.js";
 
 const MQTT_EMBED_COLOR = 0x1f6feb;
 
@@ -7,10 +8,7 @@ function isoOrUnknown(value) {
 }
 
 function compactRule(rule) {
-  const topics = Array.isArray(rule?.topics) && rule.topics.length > 0
-    ? rule.topics.join(", ")
-    : "(none)";
-  return `${rule?.permission ?? "unknown"} ${rule?.action ?? "unknown"} ${topics}`;
+  return formatProfileRuleAsEmqxSpec(rule);
 }
 
 export function buildMyAccountEmbed(user) {
