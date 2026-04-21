@@ -1,6 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":semanticCommits"
+  ],
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps",
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "mongodb"
+      ],
+      "allowedVersions": "<8.1.0"
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "semanticCommitType": "feat"
+    }
   ]
 }

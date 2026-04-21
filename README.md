@@ -60,6 +60,12 @@ cp .env.example .env
 | `LOKI_URL` | no | `http://host.docker.internal:3100` | Loki base URL used by `hubot node logs` |
 | `LOKI_USERNAME` | no | — | Optional Loki basic auth username |
 | `LOKI_PASSWORD` | no | — | Optional Loki basic auth password |
+| `HUBOT_AUTHZ_REPORT_ENABLED` | no | `false` | Enable scheduled AUTHZ denial summary embeds |
+| `HUBOT_AUTHZ_REPORT_CHANNEL_ID` | no | — | Discord channel ID used for scheduled AUTHZ summary embeds |
+| `HUBOT_AUTHZ_REPORT_RUN_MINUTE` | no | `0` | Wall-clock minute each hour to run (`top`, `bottom`, or `0-59`) |
+| `HUBOT_AUTHZ_REPORT_LOOKBACK_MINUTES` | no | `60` | Loki lookback window in minutes for each scheduled summary |
+| `HUBOT_AUTHZ_REPORT_TOP_LIMIT` | no | `10` | Maximum topic+username pairs listed in each embed |
+| `HUBOT_AUTHZ_REPORT_SEND_EMPTY` | no | `false` | If `true`, post an embed even when no denials are found |
 | `NODE_LOGS_CACHE_TTL_SECONDS` | no | `30` | Redis cache TTL for `node.logs` replies; set `0` to disable |
 | `MONGO_HOST` | no | `host.docker.internal` | MongoDB host used when `MONGO_URL` is not set |
 | `MONGO_PORT` | no | `27017` | MongoDB port used when `MONGO_URL` is not set |
@@ -210,6 +216,29 @@ Behavior:
 > **Adapter note:** The Discord adapter is loaded by its full npm package name
 > `@hubot-friends/hubot-discord`. Do **not** use the short alias `discord` – Hubot
 > will fail to resolve the module.
+
+## Built-In AUTHZ Summary Report
+
+This repository includes a scheduled AUTHZ denial summary that queries Loki and
+posts a Discord embed to a configured channel.
+
+Schedule behavior:
+
+- Runs once per hour at the wall-clock minute defined by `HUBOT_AUTHZ_REPORT_RUN_MINUTE`.
+- Supports top-of-hour (`top` or `0`) and bottom-of-hour (`bottom` or `30`) scheduling.
+
+Query behavior:
+
+- Aggregates `authorization_permission_denied` events from EMQX logs by
+  `(topic, username)` over `HUBOT_AUTHZ_REPORT_LOOKBACK_MINUTES`.
+- Uses Loki API directly, with optional basic auth via `LOKI_USERNAME` and
+  `LOKI_PASSWORD`.
+
+Manual trigger:
+
+```text
+hubot authz.report.now
+```
 
 ## Built-In MQTT Account Commands
 
