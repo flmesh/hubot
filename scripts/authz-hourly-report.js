@@ -88,7 +88,7 @@ function buildAuthzQuery(lookbackMinutes) {
     "count_over_time(",
     "{compose_service=\"emqx\", tag=\"AUTHZ\"}",
     "| json",
-    "| msg=\"authorization_permission_denied\"",
+    "| msg=~\"authorization_permission_denied|cannot_publish_to_topic_due_to_not_authorized\"",
     "| topic!=\"\"",
     "| username!=\"\"",
     `[${lookbackMinutes}m]`,
