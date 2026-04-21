@@ -183,7 +183,7 @@ function buildEmbed(rows, { lookbackMinutes, topLimit }) {
   return new EmbedBuilder()
     .setColor(REPORT_COLOR)
     .setTitle("MQTT Authorization Denial Summary")
-    .setDescription(`authorization_permission_denied events for the last ${lookbackMinutes} minutes`)
+    .setDescription(`Denied events for the last ${lookbackMinutes} minutes`)
     .addFields(
       { name: "Total Denials", value: String(totalDenials), inline: true },
       { name: "Unique topic+username pairs", value: String(uniquePairs), inline: true },
