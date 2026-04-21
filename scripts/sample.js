@@ -7,6 +7,8 @@
 //   hubot info           - Shows runtime configuration info
 //   hubot where am i     - Shows the current guild and channel name
 
+import packageMetadata from "../package.json" with { type: "json" };
+
 export default (robot) => {
   // Respond to "<botname> ping" in any channel the bot can read.
   robot.respond(/ping$/i, (msg) => {
@@ -17,6 +19,7 @@ export default (robot) => {
   robot.respond(/info$/i, (msg) => {
     const info = [
       `**Name:** ${robot.name}`,
+      `**Version:** ${packageMetadata.version}`,
       `**Adapter:** ${robot.adapterName}`,
       `**Node:** ${process.version}`,
       `**Uptime:** ${Math.floor(process.uptime())}s`,

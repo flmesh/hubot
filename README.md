@@ -74,8 +74,8 @@ cp .env.example .env
 | `MONGO_AUTH_SOURCE` | no | `mqtt` | MongoDB auth source used when `MONGO_URL` is not set |
 | `MONGO_URL` | no | — | Optional full MongoDB connection string override for the `mqtt` account commands |
 | `MONGO_DB_NAME` | no | `mqtt` | MongoDB database name used by the `mqtt` account commands |
+| `MQTT_ADMIN_GUILD_ID` | no | — | Discord guild ID used to verify admin role membership for DM commands |
 | `MQTT_ADMIN_ROLE_IDS` | no | — | Comma-separated Discord role IDs allowed to run MQTT admin commands |
-| `MQTT_ADMIN_ROLE_NAMES` | no | — | Comma-separated Discord role names allowed to run MQTT admin commands |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
 
@@ -277,7 +277,7 @@ Behavior:
   account owner.
 - `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and `mqtt.set-profile` are
   admin-only and require the caller to hold a configured
-  Discord role from `MQTT_ADMIN_ROLE_IDS` or `MQTT_ADMIN_ROLE_NAMES`.
+  Discord role from `MQTT_ADMIN_ROLE_IDS`.
 - `mqtt.profile-list` lists stored profiles, their status, default flag, and
   rule counts.
 - `mqtt.profile-show` displays a profile's metadata and ACL template rules.

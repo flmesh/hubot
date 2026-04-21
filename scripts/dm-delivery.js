@@ -112,6 +112,10 @@ async function sendDirectMessage(robot, rawMessage, text) {
   }
 }
 
+async function sendDirectEmbed(rawMessage, embed) {
+  await rawMessage.author.send({ embeds: [embed] });
+}
+
 async function sendDirectMessageToUser(user, text) {
   const parts = splitMessageForDiscord(text);
 
@@ -142,6 +146,21 @@ export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {
 
   try {
     await sendDirectMessage(robot, rawMessage, text);
+    return `I sent the ${commandName} results to you in a DM.`;
+  } catch (error) {
+    robot.logger.warn(`${commandName} DM delivery failed: ${error.message}`);
+    return `I couldn't send you a DM for ${commandName}. Please enable DMs from server members or message me directly.`;
+  }
+}
+
+export async function deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName }) {
+  const rawMessage = ctx?.context?.message?.user?.message;
+  if (!rawMessage || isDirectMessage(rawMessage)) {
+    return embed;
+  }
+
+  try {
+    await sendDirectEmbed(rawMessage, embed);
     return `I sent the ${commandName} results to you in a DM.`;
   } catch (error) {
     robot.logger.warn(`${commandName} DM delivery failed: ${error.message}`);

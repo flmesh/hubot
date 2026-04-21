@@ -1,4 +1,13 @@
-import { deliverDirectMessageToUserId, deliverPossiblyViaDm } from "./dm-delivery.js";
+// MQTT account management commands backed by MongoDB.
+//
+// Description:
+//   Manage MQTT account provisioning, credentials, status, profiles, and ACL
+//   materialization through the command bus.
+//
+// Commands:
+//   None
+
+import { deliverDirectMessageToUserId, deliverEmbedPossiblyViaDm, deliverPossiblyViaDm } from "./dm-delivery.js";
 import { buildPasswordMaterial } from "./lib/mqtt-auth.js";
 import { installMqttAuditBridge, recordMqttAuditEvent } from "./lib/mqtt-audit.js";
 import { getMqttCollections } from "./lib/mqtt-db.js";
@@ -9,7 +18,7 @@ import {
   buildWhoisEmbed,
   summarizeCommandResult,
 } from "./lib/mqtt-discord-format.js";
-import { ensureAdminRole } from "./lib/mqtt-perms.js";
+import { ensureAdminRole, verifyAdminGuildOnReady } from "./lib/mqtt-perms.js";
 import { validateUsernamePolicy } from "./lib/mqtt-policy.js";
 import {
   buildAclDocuments,
@@ -153,7 +162,7 @@ async function createAccount({ robot, ctx, requestedUsername }) {
   return { username, password, profileName: profile.name };
 }
 
-async function getMyAccount(ctx) {
+async function getMyAccount({ robot, ctx }) {
   const { userId } = getDiscordIdentity(ctx);
   if (!userId) {
     throw new Error("could not determine your Discord identity");
@@ -165,7 +174,12 @@ async function getMyAccount(ctx) {
     throw new Error("you do not have an MQTT account");
   }
 
-  return buildMyAccountEmbed(user);
+  return deliverEmbedPossiblyViaDm({
+    robot,
+    ctx,
+    embed: buildMyAccountEmbed(user),
+    commandName: "mqtt.my-account",
+  });
 }
 
 async function rotateMyPassword({ robot, ctx }) {
@@ -215,16 +229,21 @@ async function getUserByUsernameOrThrow(collections, username) {
   return user;
 }
 
-async function getAccountWhois({ ctx }) {
-  ensureAdminRole(ctx);
+async function getAccountWhois({ robot, ctx }) {
+  await ensureAdminRole(robot, ctx);
   const collections = await getMqttCollections();
   const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
 
-  return buildWhoisEmbed(user);
+  return deliverEmbedPossiblyViaDm({
+    robot,
+    ctx,
+    embed: buildWhoisEmbed(user),
+    commandName: "mqtt.whois",
+  });
 }
 
 async function updateAccountStatus({ robot, ctx, status }) {
-  ensureAdminRole(ctx);
+  await ensureAdminRole(robot, ctx);
   const { discordTag } = getDiscordIdentity(ctx);
   const collections = await getMqttCollections();
   const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
@@ -272,7 +291,7 @@ async function rotateUserPassword({ robot, ctx, targetUsername }) {
 }
 
 async function setUserProfile({ robot, ctx }) {
-  ensureAdminRole(ctx);
+  await ensureAdminRole(robot, ctx);
   const { discordTag } = getDiscordIdentity(ctx);
   const collections = await getMqttCollections();
   const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
@@ -318,16 +337,16 @@ function normalizeProfileName(value) {
   return normalized;
 }
 
-async function getProfileList({ ctx }) {
-  ensureAdminRole(ctx);
+async function getProfileList({ robot, ctx }) {
+  await ensureAdminRole(robot, ctx);
   const collections = await getMqttCollections();
   const profiles = await listProfiles(collections);
 
   return buildProfileListEmbed(profiles);
 }
 
-async function getProfileShow({ ctx }) {
-  ensureAdminRole(ctx);
+async function getProfileShow({ robot, ctx }) {
+  await ensureAdminRole(robot, ctx);
   const collections = await getMqttCollections();
   const profileName = normalizeProfileName(ctx.args.profile);
   const profile = await getProfileByName(collections, profileName);
@@ -338,8 +357,8 @@ async function getProfileShow({ ctx }) {
   return buildProfileShowEmbed(profile);
 }
 
-async function applyProfileTemplate({ ctx }) {
-  ensureAdminRole(ctx);
+async function applyProfileTemplate({ robot, ctx }) {
+  await ensureAdminRole(robot, ctx);
   const collections = await getMqttCollections();
   const profileName = normalizeProfileName(ctx.args.profile);
   const profile = await getProfileByName(collections, profileName);
@@ -414,6 +433,7 @@ export function registerMqttCommands(robot, {
   auditBridge = installMqttAuditBridge,
 } = {}) {
   auditBridge(robot, { recordEvent: auditEvent });
+  verifyAdminGuildOnReady(robot);
 
   robot.commands.register({
     id: "mqtt.request",
@@ -462,7 +482,7 @@ export function registerMqttCommands(robot, {
       "mqtt.my-account",
       "mqtt.my-account --help",
     ],
-    handler: wrapHandler("mqtt.my-account", async (ctx) => getMyAccount(ctx), { auditEvent }),
+    handler: wrapHandler("mqtt.my-account", async (ctx) => getMyAccount({ robot, ctx }), { auditEvent }),
   });
 
   robot.commands.register({
@@ -484,7 +504,7 @@ export function registerMqttCommands(robot, {
     ],
     handler: wrapHandler("mqtt.rotate", async (ctx) => {
       if (ctx.args.username) {
-        ensureAdminRole(ctx);
+        await ensureAdminRole(robot, ctx);
         const result = await rotateUserPassword({
           robot,
           ctx,
@@ -539,7 +559,7 @@ export function registerMqttCommands(robot, {
       "mqtt.whois username:jbouse",
       "mqtt.whois --username jbouse",
     ],
-    handler: wrapHandler("mqtt.whois", async (ctx) => getAccountWhois({ ctx }), { auditEvent }),
+    handler: wrapHandler("mqtt.whois", async (ctx) => getAccountWhois({ robot, ctx }), { auditEvent }),
   });
 
   robot.commands.register({
@@ -605,7 +625,7 @@ export function registerMqttCommands(robot, {
       "mqtt.profile-list",
       "mqtt.profile-list --help",
     ],
-    handler: wrapHandler("mqtt.profile-list", async (ctx) => getProfileList({ ctx }), { auditEvent }),
+    handler: wrapHandler("mqtt.profile-list", async (ctx) => getProfileList({ robot, ctx }), { auditEvent }),
   });
 
   robot.commands.register({
@@ -622,7 +642,7 @@ export function registerMqttCommands(robot, {
       "mqtt.profile-show profile:default",
       "mqtt.profile-show --profile default",
     ],
-    handler: wrapHandler("mqtt.profile-show", async (ctx) => getProfileShow({ ctx }), { auditEvent }),
+    handler: wrapHandler("mqtt.profile-show", async (ctx) => getProfileShow({ robot, ctx }), { auditEvent }),
   });
 
   robot.commands.register({
@@ -639,7 +659,7 @@ export function registerMqttCommands(robot, {
       "mqtt.profile-apply profile:default",
       "mqtt.profile-apply --profile default",
     ],
-    handler: wrapHandler("mqtt.profile-apply", async (ctx) => applyProfileTemplate({ ctx }), { auditEvent }),
+    handler: wrapHandler("mqtt.profile-apply", async (ctx) => applyProfileTemplate({ robot, ctx }), { auditEvent }),
   });
 }
 
