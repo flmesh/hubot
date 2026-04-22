@@ -78,7 +78,7 @@ export function buildProfileShowEmbed(profile) {
       { name: "Status", value: profile.status ?? "unknown", inline: true },
       { name: "Default", value: profile.is_default ? "yes" : "no", inline: true },
       { name: "Created", value: isoOrUnknown(profile.created_at), inline: true },
-      { name: "Updated", value: isoOrUnknown(profile.updated_at), inline: true },
+      { name: "Updated", value: isoOrUnknown(profile.updated_at, "never"), inline: true },
       { name: "Rules", value: ruleLines, inline: false },
     );
 
