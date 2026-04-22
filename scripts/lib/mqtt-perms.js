@@ -106,12 +106,24 @@ export function verifyAdminGuildOnReady(robot) {
     return;
   }
 
-  client.once("ready", async () => {
+  let verified = false;
+  const verify = async () => {
+    if (verified) {
+      return;
+    }
+
+    verified = true;
     try {
       const guild = await client.guilds.fetch(guildId);
       robot.logger.info(`MQTT admin guild verified: ${guild?.name ?? "unknown"} (${guildId})`);
     } catch (error) {
       robot.logger.warn(`MQTT_ADMIN_GUILD_ID is not accessible: ${guildId}: ${error.message}`);
     }
-  });
+  };
+
+  client.once("clientReady", verify);
+  client.once("ready", verify);
+  if (typeof client.isReady === "function" ? client.isReady() : client.readyAt) {
+    verify();
+  }
 }
