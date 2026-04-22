@@ -53,6 +53,22 @@ function redactError(error) {
   };
 }
 
+function normalizeCommandContextForAudit(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.context?.message?.user) {
+    return value;
+  }
+
+  if (value.message?.user) {
+    return { context: value };
+  }
+
+  return value;
+}
+
 export async function recordMqttAuditEvent({
   robot,
   commandId,
@@ -166,16 +182,17 @@ export function installMqttAuditBridge(robot, { recordEvent = recordMqttAuditEve
       return;
     }
 
+    const auditContext = normalizeCommandContextForAudit(pending.context);
     pendingMetadata.set(confirmationKey, {
       args: pending.args ?? {},
-      ctx: pending.context ?? null,
+      ctx: auditContext,
     });
 
     await recordEvent({
       robot,
       commandId,
       phase: "confirm_requested",
-      ctx: pending.context ?? null,
+      ctx: auditContext,
       args: pending.args ?? {},
       metadata: {
         confirmation_key: confirmationKey,

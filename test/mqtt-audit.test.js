@@ -154,4 +154,62 @@ test("installMqttAuditBridge records confirm workflow phases", async () => {
     ["confirm_requested", "confirmed"],
   );
   assert.equal(events[0].args.username, "jbouse");
+  assert.equal(events[0].ctx.context.message.user.id, "505598218306977793");
+  assert.equal(events[1].ctx.context.message.user.message.channelId, "929659840899473426");
+});
+
+test("confirmation audit events preserve actor and location from pending inner context", async () => {
+  const inserted = [];
+  const commands = new EventEmitter();
+  commands.pendingProposals = new Map();
+
+  const robot = {
+    commands,
+    logger: {
+      info() {},
+      warn() {},
+    },
+  };
+
+  installMqttAuditBridge(robot, {
+    recordEvent: (event) => recordMqttAuditEvent({
+      ...event,
+      collections: {
+        mqttAudit: {
+          async insertOne(document) {
+            inserted.push(document);
+            return { insertedId: `audit-${inserted.length}` };
+          },
+        },
+      },
+    }),
+  });
+
+  const pendingContext = buildContext();
+  commands.pendingProposals.set("abc123", {
+    args: { username: "jbouse", profile: "admin" },
+    context: pendingContext.context,
+  });
+
+  commands.emit("commands:proposal_created", {
+    commandId: "mqtt.profile.set",
+    confirmationKey: "abc123",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  commands.emit("commands:proposal_confirmed", {
+    commandId: "mqtt.profile.set",
+    confirmationKey: "abc123",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(inserted.length, 2);
+  for (const document of inserted) {
+    assert.equal(document.actor.discord_user_id, "505598218306977793");
+    assert.equal(document.actor.discord_username, "kq4afy.radio");
+    assert.equal(document.actor.discord_tag, "Jeremy");
+    assert.equal(document.location.guild_id, "929659839196561419");
+    assert.equal(document.location.channel_id, "929659840899473426");
+    assert.equal(document.location.is_dm, false);
+  }
 });
