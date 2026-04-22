@@ -1,13 +1,30 @@
-// Sample Hubot script – a good starting point for your own commands.
+// Sample Hubot script - a good starting point for your own commands.
 // Drop additional scripts in this directory and Hubot will load them
 // automatically at startup.
 //
 // Commands:
 //   hubot ping           - Replies with PONG
-//   hubot info           - Shows runtime configuration info
+//   hubot info           - Shows runtime configuration info as an embed
 //   hubot where am i     - Shows the current guild and channel name
 
+import { EmbedBuilder } from "discord.js";
 import packageMetadata from "../package.json" with { type: "json" };
+
+const INFO_COLOR = 0x2563eb;
+
+export function buildInfoEmbed(robot) {
+  return new EmbedBuilder()
+    .setColor(INFO_COLOR)
+    .setTitle(`${robot.name} Runtime Info`)
+    .addFields(
+      { name: "Name", value: String(robot.name ?? "unknown"), inline: true },
+      { name: "Version", value: String(packageMetadata.version), inline: true },
+      { name: "Adapter", value: String(robot.adapterName ?? "unknown"), inline: true },
+      { name: "Node", value: process.version, inline: true },
+      { name: "Uptime", value: `${Math.floor(process.uptime())}s`, inline: true },
+    )
+    .setTimestamp(new Date());
+}
 
 export default (robot) => {
   // Respond to "<botname> ping" in any channel the bot can read.
@@ -15,16 +32,9 @@ export default (robot) => {
     msg.reply("PONG");
   });
 
-  // Show non-sensitive runtime information – useful for diagnosing deployments.
+  // Show non-sensitive runtime information, useful for diagnosing deployments.
   robot.respond(/info$/i, (msg) => {
-    const info = [
-      `**Name:** ${robot.name}`,
-      `**Version:** ${packageMetadata.version}`,
-      `**Adapter:** ${robot.adapterName}`,
-      `**Node:** ${process.version}`,
-      `**Uptime:** ${Math.floor(process.uptime())}s`,
-    ].join("\n");
-    msg.reply(info);
+    msg.reply(buildInfoEmbed(robot));
   });
 
   // Verify that the bot can see the current channel / guild.
