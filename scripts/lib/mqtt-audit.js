@@ -93,9 +93,63 @@ export async function recordMqttAuditEvent({
 
   try {
     const mqttCollections = collections ?? await getMqttCollections();
-    await mqttCollections.mqttAudit.insertOne(document);
+    const result = await mqttCollections.mqttAudit.insertOne(document);
+    return result?.insertedId ?? document._id ?? null;
   } catch (auditError) {
     robot?.logger?.warn?.(`mqtt.audit persist failed command=${commandId} phase=${phase}: ${auditError.message}`);
+    return null;
+  }
+}
+
+export async function updateMqttAuditEvent({
+  robot,
+  auditId,
+  commandId,
+  phase,
+  result = null,
+  error = null,
+  metadata = {},
+  collections = null,
+}) {
+  const update = {
+    phase,
+    result: result ?? null,
+    error: redactError(error),
+    metadata,
+    completed_at: new Date(),
+  };
+
+  const loggerLine = [
+    `mqtt.audit command=${commandId}`,
+    `phase=${phase}`,
+    auditId ? `audit_id=${auditId}` : "audit_id=missing",
+  ].join(" ");
+
+  if (error) {
+    robot?.logger?.warn?.(`${loggerLine} error=${update.error.message}`);
+  } else {
+    robot?.logger?.info?.(loggerLine);
+  }
+
+  try {
+    const mqttCollections = collections ?? await getMqttCollections();
+    if (!auditId || !mqttCollections.mqttAudit.updateOne) {
+      await mqttCollections.mqttAudit.insertOne({
+        command_id: commandId,
+        ...update,
+        created_at: update.completed_at,
+      });
+      return null;
+    }
+
+    await mqttCollections.mqttAudit.updateOne(
+      { _id: auditId },
+      { $set: update },
+    );
+    return auditId;
+  } catch (auditError) {
+    robot?.logger?.warn?.(`mqtt.audit persist failed command=${commandId} phase=${phase}: ${auditError.message}`);
+    return null;
   }
 }
 

@@ -3,12 +3,23 @@ import { formatProfileRuleAsEmqxSpec } from "./mqtt-rule-templates.js";
 
 const MQTT_EMBED_COLOR = 0x1f6feb;
 
-function isoOrUnknown(value) {
-  return value ? new Date(value).toISOString() : "unknown";
+function isoOrUnknown(value, fallback = "unknown") {
+  return value ? new Date(value).toISOString() : fallback;
 }
 
 function compactRule(rule) {
   return formatProfileRuleAsEmqxSpec(rule);
+}
+
+function formatDiscordOwner(user) {
+  const userId = String(user.discord_user_id ?? "").trim();
+  const tag = String(user.discord_tag ?? "").trim();
+
+  if (userId) {
+    return `<@${userId}>`;
+  }
+
+  return tag || "unknown";
 }
 
 export function buildMyAccountEmbed(user) {
@@ -30,10 +41,9 @@ export function buildWhoisEmbed(user) {
     .addFields(
       { name: "Status", value: user.status ?? "unknown", inline: true },
       { name: "Profile", value: user.profile ?? "unset", inline: true },
-      { name: "Discord User ID", value: user.discord_user_id ?? "unknown", inline: true },
-      { name: "Discord Tag", value: user.discord_tag ?? "unknown", inline: false },
+      { name: "Owner", value: formatDiscordOwner(user), inline: false },
       { name: "Created", value: isoOrUnknown(user.created_at), inline: true },
-      { name: "Updated", value: user.updated_at ? new Date(user.updated_at).toISOString() : "never", inline: true },
+      { name: "Updated", value: isoOrUnknown(user.updated_at, "never"), inline: true },
     );
 }
 

@@ -236,7 +236,17 @@ function createCollections() {
     },
     mqttAudit: {
       async insertOne(document) {
-        state.mqttAudit.push(document);
+        const stored = { ...document, _id: document._id ?? `${state.mqttAudit.length + 1}` };
+        state.mqttAudit.push(stored);
+        return { insertedId: stored._id };
+      },
+      async updateOne(filter, update) {
+        const doc = state.mqttAudit.find((entry) => matches(entry, filter));
+        if (!doc) {
+          return { matchedCount: 0, modifiedCount: 0 };
+        }
+        Object.assign(doc, update.$set ?? {});
+        return { matchedCount: 1, modifiedCount: 1 };
       },
     },
   };
@@ -256,10 +266,36 @@ function setup() {
   };
 }
 
+const MQTT_ADMIN_COMMAND_IDS = [
+  "mqtt.reset",
+  "mqtt.whois",
+  "mqtt.disable",
+  "mqtt.enable",
+  "mqtt.profile.set",
+  "mqtt.profile.list",
+  "mqtt.profile.show",
+  "mqtt.profile.apply",
+];
+
 test.afterEach(() => {
   clearMqttCollectionsOverrideForTests();
   delete process.env.MQTT_ADMIN_ROLE_IDS;
   delete process.env.MQTT_ADMIN_GUILD_ID;
+});
+
+test("MQTT admin commands declare command-bus role permissions", () => {
+  const { robot, commands } = setup();
+
+  assert.ok(robot.commands.permissionProvider?.hasRole);
+  for (const commandId of MQTT_ADMIN_COMMAND_IDS) {
+    assert.deepEqual(commands.get(commandId).permissions, {
+      roles: ["env:MQTT_ADMIN_ROLE_IDS"],
+    });
+  }
+
+  assert.equal(commands.get("mqtt.request").permissions, undefined);
+  assert.equal(commands.get("mqtt.my-account").permissions, undefined);
+  assert.equal(commands.get("mqtt.rotate").permissions, undefined);
 });
 
 test("mqtt.request provisions an account, applies the default profile, and DMs credentials", async () => {
@@ -279,11 +315,9 @@ test("mqtt.request provisions an account, applies the default profile, and DMs c
   assert.equal(collections.state.requests.length, 1);
   assert.equal(collections.state.requests[0].status, "approved");
   assert.equal(collections.state.mqttAcl.length, 2);
-  assert.equal(collections.state.mqttAudit.length, 2);
-  assert.deepEqual(
-    collections.state.mqttAudit.map((entry) => entry.phase),
-    ["attempted", "succeeded"],
-  );
+  assert.equal(collections.state.mqttAudit.length, 1);
+  assert.equal(collections.state.mqttAudit[0].phase, "succeeded");
+  assert.ok(collections.state.mqttAudit[0].completed_at);
 });
 
 test("mqtt.my-account reports when the caller has no account", async () => {
@@ -358,7 +392,7 @@ test("mqtt.rotate rotates the caller password for an active account", async () =
   assert.ok(collections.state.users[0].salt);
 });
 
-test("mqtt.rotate with username is admin-only and DMs the account owner on success", async () => {
+test("mqtt.reset is admin-only and DMs the account owner on success", async () => {
   const { robot, collections, commands } = setup();
   collections.state.users.push({
     _id: "1",
@@ -370,19 +404,24 @@ test("mqtt.rotate with username is admin-only and DMs the account owner on succe
     created_at: new Date("2026-04-19T00:00:00.000Z"),
   });
 
-  const deniedReply = await commands.get("mqtt.rotate").handler(createContext({
+  const command = commands.get("mqtt.reset");
+  const deniedCtx = createContext({
     args: { username: "jbouse" },
     roleIds: [],
-  }));
-  assert.equal(deniedReply, "mqtt command failed: you are not allowed to run this command");
+  });
+  assert.equal(await robot.commands.permissionProvider.hasRole(
+    deniedCtx.context.message.user,
+    command.permissions.roles,
+    deniedCtx.context,
+  ), false);
 
-  const allowedReply = await commands.get("mqtt.rotate").handler(createContext({
+  const allowedReply = await command.handler(createContext({
     args: { username: "jbouse" },
     roleIds: ["1"],
   }));
   assert.equal(
     allowedReply,
-    "Password rotated for jbouse. I sent the new credentials to the account owner via DM.",
+    "Password reset for jbouse. I sent the new credentials to the account owner via DM.",
   );
   assert.equal(robot.fetchedUserDmMessages.length, 1);
 });
@@ -408,7 +447,9 @@ test("mqtt.whois DMs account details when invoked by an admin in a server", asyn
   assert.equal(reply, "I sent the mqtt.whois results to you in a DM.");
   assert.equal(robot.dmMessages.length, 1);
   assert.equal(robot.dmMessages[0].embeds.length, 1);
-  assert.equal(robot.dmMessages[0].embeds[0].toJSON().title, "MQTT Account: jbouse");
+  const embed = robot.dmMessages[0].embeds[0].toJSON();
+  assert.equal(embed.title, "MQTT Account: jbouse");
+  assert.equal(embed.fields.find((field) => field.name === "Owner")?.value, "<@600>");
 });
 
 test("mqtt.whois allows admin checks from DM by fetching configured guild membership", async () => {
@@ -428,13 +469,24 @@ test("mqtt.whois allows admin checks from DM by fetching configured guild member
     },
   });
 
-  const reply = await commands.get("mqtt.whois").handler(createContext({
+  const ctx = createContext({
     args: { username: "jbouse" },
     guildId: null,
-  }));
+  });
+  const command = commands.get("mqtt.whois");
+
+  assert.equal(await robot.commands.permissionProvider.hasRole(
+    ctx.context.message.user,
+    command.permissions.roles,
+    ctx.context,
+  ), true);
+
+  const reply = await command.handler(ctx);
 
   assert.ok(reply instanceof EmbedBuilder);
-  assert.equal(reply.toJSON().title, "MQTT Account: jbouse");
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Account: jbouse");
+  assert.equal(embed.fields.find((field) => field.name === "Owner")?.value, "<@600>");
 });
 
 test("mqtt.disable and mqtt.enable update account status for admins", async () => {
@@ -463,7 +515,7 @@ test("mqtt.disable and mqtt.enable update account status for admins", async () =
   assert.equal(collections.state.users[0].status, "active");
 });
 
-test("mqtt.set-profile replaces profile-managed ACLs and updates the stored profile", async () => {
+test("mqtt.profile.set replaces profile-managed ACLs and updates the stored profile", async () => {
   const { collections, commands } = setup();
   collections.state.users.push({
     _id: "1",
@@ -482,7 +534,7 @@ test("mqtt.set-profile replaces profile-managed ACLs and updates the stored prof
     managed_by: "hubot-profile",
   });
 
-  const reply = await commands.get("mqtt.set-profile").handler(createContext({
+  const reply = await commands.get("mqtt.profile.set").handler(createContext({
     args: { username: "jbouse", profile: "lonewolf" },
     roleIds: ["1"],
   }));
@@ -493,10 +545,10 @@ test("mqtt.set-profile replaces profile-managed ACLs and updates the stored prof
   assert.equal(collections.state.mqttAcl[0].source_profile, "lonewolf");
 });
 
-test("mqtt.profile-list shows configured profiles for admins", async () => {
+test("mqtt.profile.list shows configured profiles for admins", async () => {
   const { commands } = setup();
 
-  const reply = await commands.get("mqtt.profile-list").handler(createContext({
+  const reply = await commands.get("mqtt.profile.list").handler(createContext({
     roleIds: ["1"],
   }));
 
@@ -507,10 +559,10 @@ test("mqtt.profile-list shows configured profiles for admins", async () => {
   assert.match(embed.description, /lonewolf/);
 });
 
-test("mqtt.profile-show returns metadata and rules for a profile", async () => {
+test("mqtt.profile.show returns metadata and rules for a profile", async () => {
   const { commands } = setup();
 
-  const reply = await commands.get("mqtt.profile-show").handler(createContext({
+  const reply = await commands.get("mqtt.profile.show").handler(createContext({
     args: { profile: "default" },
     roleIds: ["1"],
   }));
@@ -522,7 +574,7 @@ test("mqtt.profile-show returns metadata and rules for a profile", async () => {
   assert.match(embed.fields.find((field) => field.name === "Rules")?.value, /\{deny, \{user, "\$\{username\}"\}, all, \["msh\/US\/FL\/LWS\/#"\]\}\./);
 });
 
-test("mqtt.profile-apply reapplies the template to all users assigned to the profile", async () => {
+test("mqtt.profile.apply reapplies the template to all users assigned to the profile", async () => {
   const { collections, commands } = setup();
   collections.state.users.push(
     {
@@ -577,7 +629,7 @@ test("mqtt.profile-apply reapplies the template to all users assigned to the pro
     },
   );
 
-  const reply = await commands.get("mqtt.profile-apply").handler(createContext({
+  const reply = await commands.get("mqtt.profile.apply").handler(createContext({
     args: { profile: "default" },
     roleIds: ["1"],
   }));

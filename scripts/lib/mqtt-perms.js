@@ -94,6 +94,15 @@ export async function userHasAdminRoleViaDiscord(robot, ctx) {
 }
 
 export async function ensureAdminRole(robot, ctx) {
+  const provider = robot?.commands?.permissionProvider;
+  if (provider?.hasRole && await provider.hasRole(
+    ctx?.context?.user,
+    ["env:MQTT_ADMIN_ROLE_IDS"],
+    ctx?.context ?? {},
+  )) {
+    return;
+  }
+
   if (!(await userHasAdminRoleViaDiscord(robot, ctx))) {
     throw new Error("you are not allowed to run this command");
   }
