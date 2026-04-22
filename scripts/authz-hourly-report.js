@@ -5,7 +5,7 @@
 //   queries Loki for authorization_permission_denied events, and posts a summary embed.
 //
 // Commands:
-//   hubot authz.report.now - Run the report immediately and post it to the configured channel.
+//   hubot authz.report.now - Run the report immediately.
 
 import { EmbedBuilder } from "discord.js";
 
@@ -206,6 +206,15 @@ async function sendEmbedToChannel({ robot, channelId, embed }) {
   await channel.send({ embeds: [embed] });
 }
 
+function getRawMessage(ctx) {
+  return ctx?.context?.message?.user?.message ?? null;
+}
+
+function isDirectMessageContext(ctx) {
+  const rawMessage = getRawMessage(ctx);
+  return rawMessage?.guildId == null;
+}
+
 function msUntilNextMinuteBoundary(targetMinute, now = new Date()) {
   const next = new Date(now);
   next.setSeconds(0, 0);
@@ -239,6 +248,21 @@ export default (robot) => {
   let running = false;
   let timer = null;
 
+  const buildReportEmbed = async () => {
+    const rows = await queryLokiAuthzSummary({
+      robot,
+      lookbackMinutes: config.lookbackMinutes,
+    });
+
+    return {
+      rows,
+      embed: buildEmbed(rows, {
+        lookbackMinutes: config.lookbackMinutes,
+        topLimit: config.topLimit,
+      }),
+    };
+  };
+
   const runOnce = async ({ manual = false } = {}) => {
     if (running) {
       robot.logger.warn("authz.report skipped: prior run is still in progress");
@@ -247,20 +271,12 @@ export default (robot) => {
 
     running = true;
     try {
-      const rows = await queryLokiAuthzSummary({
-        robot,
-        lookbackMinutes: config.lookbackMinutes,
-      });
+      const { rows, embed } = await buildReportEmbed();
 
       if (rows.length === 0 && !config.sendEmpty) {
         robot.logger.info("authz.report: no denials found; skipping empty report");
         return;
       }
-
-      const embed = buildEmbed(rows, {
-        lookbackMinutes: config.lookbackMinutes,
-        topLimit: config.topLimit,
-      });
 
       await sendEmbedToChannel({
         robot,
@@ -271,6 +287,25 @@ export default (robot) => {
       robot.logger.info(`authz.report posted${manual ? " (manual)" : ""}: ${rows.length} pairs`);
     } catch (error) {
       robot.logger.error(`authz.report failed${manual ? " (manual)" : ""}: ${error.message}`);
+    } finally {
+      running = false;
+    }
+  };
+
+  const runForDirectMessage = async () => {
+    if (running) {
+      robot.logger.warn("authz.report skipped: prior run is still in progress");
+      return "authz.report skipped: prior run is still in progress.";
+    }
+
+    running = true;
+    try {
+      const { rows, embed } = await buildReportEmbed();
+      robot.logger.info(`authz.report generated for DM: ${rows.length} pairs`);
+      return embed;
+    } catch (error) {
+      robot.logger.error(`authz.report failed (manual DM): ${error.message}`);
+      return `authz.report failed: ${error.message}`;
     } finally {
       running = false;
     }
@@ -290,12 +325,16 @@ export default (robot) => {
   if (robot.commands?.register) {
     robot.commands.register({
       id: "authz.report.now",
-      description: "Post the AUTHZ denial summary embed immediately",
+      description: "Run the AUTHZ denial summary report immediately",
       aliases: [
         "authz report now",
       ],
       confirm: "never",
-      handler: async () => {
+      handler: async (ctx) => {
+        if (isDirectMessageContext(ctx)) {
+          return runForDirectMessage();
+        }
+
         await runOnce({ manual: true });
         return "Triggered authz.report run.";
       },
