@@ -116,6 +116,10 @@ async function sendDirectEmbed(rawMessage, embed) {
   await rawMessage.author.send({ embeds: [embed] });
 }
 
+async function sendDirectEmbedToUser(user, embed) {
+  await user.send({ embeds: [embed] });
+}
+
 async function sendDirectMessageToUser(user, text) {
   const parts = splitMessageForDiscord(text);
 
@@ -136,6 +140,20 @@ export async function deliverDirectMessageToUserId({ robot, userId, text, comman
 
   const user = await client.users.fetch(String(userId));
   await sendDirectMessageToUser(user, text);
+}
+
+export async function deliverDirectEmbedToUserId({ robot, userId, embed, commandName }) {
+  if (!userId) {
+    throw new Error(`${commandName} DM delivery failed: missing Discord user ID`);
+  }
+
+  const client = robot?.adapter?.client;
+  if (!client?.users?.fetch) {
+    throw new Error(`${commandName} DM delivery failed: Discord client is unavailable`);
+  }
+
+  const user = await client.users.fetch(String(userId));
+  await sendDirectEmbedToUser(user, embed);
 }
 
 export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {

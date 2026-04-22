@@ -7,13 +7,14 @@
 // Commands:
 //   None
 
-import { deliverDirectMessageToUserId, deliverEmbedPossiblyViaDm, deliverPossiblyViaDm } from "./dm-delivery.js";
+import { deliverDirectEmbedToUserId, deliverEmbedPossiblyViaDm } from "./dm-delivery.js";
 import { installDiscordRolePermissionProvider } from "./lib/discord-role-permissions.js";
 import { buildPasswordMaterial } from "./lib/mqtt-auth.js";
 import { installMqttAuditBridge, recordMqttAuditEvent, updateMqttAuditEvent } from "./lib/mqtt-audit.js";
 import { getMqttCollections } from "./lib/mqtt-db.js";
 import {
   buildMyAccountEmbed,
+  buildCredentialEmbed,
   buildProfileListEmbed,
   buildProfileShowEmbed,
   buildWhoisEmbed,
@@ -52,24 +53,12 @@ function getDiscordIdentity(ctx) {
   return { rawMessage, userId, username, discordTag };
 }
 
-function formatCredentialReply({ username, password, profileName, action }) {
-  return [
-    `MQTT account ${action}.`,
-    "",
-    `Username: ${username}`,
-    `Password: ${password}`,
-    `Profile: ${profileName}`,
-    "",
-    "Keep this password private.",
-  ].join("\n");
-}
-
 async function deliverCredentials({ robot, ctx, username, password, profileName, action, commandName }) {
-  const text = formatCredentialReply({ username, password, profileName, action });
-  return deliverPossiblyViaDm({
+  const embed = buildCredentialEmbed({ username, password, profileName, action });
+  return deliverEmbedPossiblyViaDm({
     robot,
     ctx,
-    text,
+    embed,
     commandName,
   });
 }
@@ -301,10 +290,10 @@ async function resetUserPassword({ robot, ctx }) {
   });
 
   try {
-    await deliverDirectMessageToUserId({
+    await deliverDirectEmbedToUserId({
       robot,
       userId: result.discordUserId,
-      text: formatCredentialReply({
+      embed: buildCredentialEmbed({
         username: result.username,
         password: result.password,
         profileName: result.profileName,

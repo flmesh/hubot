@@ -308,7 +308,11 @@ test("mqtt.request provisions an account, applies the default profile, and DMs c
 
   const reply = await commands.get("mqtt.request").handler(ctx);
 
-  assert.match(reply, /MQTT account created\./);
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Account created");
+  assert.equal(embed.fields.find((field) => field.name === "Username")?.value, "jbouse");
+  assert.ok(embed.fields.find((field) => field.name === "Password")?.value);
   assert.equal(collections.state.users.length, 1);
   assert.equal(collections.state.users[0].username, "jbouse");
   assert.equal(collections.state.users[0].profile, "default");
@@ -317,6 +321,8 @@ test("mqtt.request provisions an account, applies the default profile, and DMs c
   assert.equal(collections.state.mqttAcl.length, 2);
   assert.equal(collections.state.mqttAudit.length, 1);
   assert.equal(collections.state.mqttAudit[0].phase, "succeeded");
+  assert.deepEqual(collections.state.mqttAudit[0].result, { kind: "credential_delivery" });
+  assert.doesNotMatch(JSON.stringify(collections.state.mqttAudit[0]), /Password/i);
   assert.ok(collections.state.mqttAudit[0].completed_at);
 });
 
@@ -387,7 +393,13 @@ test("mqtt.rotate rotates the caller password for an active account", async () =
 
   const reply = await commands.get("mqtt.rotate").handler(ctx);
 
-  assert.match(reply, /MQTT account rotated\./);
+  assert.ok(reply instanceof EmbedBuilder);
+  const embed = reply.toJSON();
+  assert.equal(embed.title, "MQTT Account rotated");
+  assert.equal(embed.fields.find((field) => field.name === "Username")?.value, "jbouse");
+  assert.ok(embed.fields.find((field) => field.name === "Password")?.value);
+  assert.deepEqual(collections.state.mqttAudit[0].result, { kind: "credential_delivery" });
+  assert.doesNotMatch(JSON.stringify(collections.state.mqttAudit[0]), /Password/i);
   assert.ok(collections.state.users[0].password_hash);
   assert.ok(collections.state.users[0].salt);
 });
@@ -424,6 +436,8 @@ test("mqtt.reset is admin-only and DMs the account owner on success", async () =
     "Password reset for jbouse. I sent the new credentials to the account owner via DM.",
   );
   assert.equal(robot.fetchedUserDmMessages.length, 1);
+  assert.equal(robot.fetchedUserDmMessages[0].embeds.length, 1);
+  assert.equal(robot.fetchedUserDmMessages[0].embeds[0].toJSON().title, "MQTT Account rotated");
 });
 
 test("mqtt.whois DMs account details when invoked by an admin in a server", async () => {

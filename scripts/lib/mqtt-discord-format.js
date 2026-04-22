@@ -2,6 +2,7 @@ import { EmbedBuilder } from "discord.js";
 import { formatProfileRuleAsEmqxSpec } from "./mqtt-rule-templates.js";
 
 const MQTT_EMBED_COLOR = 0x1f6feb;
+const SENSITIVE_RESULT = Symbol.for("hubot.mqtt.sensitive_result");
 
 function isoOrUnknown(value, fallback = "unknown") {
   return value ? new Date(value).toISOString() : fallback;
@@ -47,6 +48,24 @@ export function buildWhoisEmbed(user) {
     );
 }
 
+export function buildCredentialEmbed({ username, password, profileName, action }) {
+  const embed = new EmbedBuilder()
+    .setColor(MQTT_EMBED_COLOR)
+    .setTitle(`MQTT Account ${action}`)
+    .addFields(
+      { name: "Username", value: username ?? "unknown", inline: true },
+      { name: "Password", value: password ?? "unknown", inline: false },
+      { name: "Profile", value: profileName ?? "unset", inline: true },
+    )
+    .setFooter({ text: "Keep this password private." });
+
+  Object.defineProperty(embed, SENSITIVE_RESULT, {
+    value: "credential_delivery",
+  });
+
+  return embed;
+}
+
 export function buildProfileListEmbed(profiles) {
   const description = profiles.length === 0
     ? "No MQTT profiles are configured."
@@ -90,6 +109,12 @@ export function buildProfileShowEmbed(profile) {
 }
 
 export function summarizeCommandResult(result) {
+  if (result?.[SENSITIVE_RESULT]) {
+    return {
+      kind: result[SENSITIVE_RESULT],
+    };
+  }
+
   if (typeof result === "string") {
     return {
       kind: "text",
