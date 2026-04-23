@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/flmesh/hubot/compare/v1.1.0...v1.2.0) (2026-04-23)
+
+
+### Features
+
+* **deps:** update googleapis/release-please-action action to v5 ([944207b](https://github.com/flmesh/hubot/commit/944207b09ec2440a6ac6a70b6f2df5cfcc9777bb))
+* **deps:** update googleapis/release-please-action action to v5 ([fddde5f](https://github.com/flmesh/hubot/commit/fddde5f5777b41bc054f6fac8aae53091b78ae5d))
+
 ## [1.1.0](https://github.com/flmesh/hubot/compare/v1.0.1...v1.1.0) (2026-04-21)
 
 
