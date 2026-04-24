@@ -2,13 +2,25 @@ import { EmbedBuilder } from "discord.js";
 import { formatProfileRuleAsEmqxSpec } from "./mqtt-rule-templates.js";
 
 const MQTT_EMBED_COLOR = 0x1f6feb;
+const SENSITIVE_RESULT = Symbol.for("hubot.mqtt.sensitive_result");
 
-function isoOrUnknown(value) {
-  return value ? new Date(value).toISOString() : "unknown";
+function isoOrUnknown(value, fallback = "unknown") {
+  return value ? new Date(value).toISOString() : fallback;
 }
 
 function compactRule(rule) {
   return formatProfileRuleAsEmqxSpec(rule);
+}
+
+function formatDiscordOwner(user) {
+  const userId = String(user.discord_user_id ?? "").trim();
+  const tag = String(user.discord_tag ?? "").trim();
+
+  if (userId) {
+    return `<@${userId}>`;
+  }
+
+  return tag || "unknown";
 }
 
 export function buildMyAccountEmbed(user) {
@@ -30,11 +42,28 @@ export function buildWhoisEmbed(user) {
     .addFields(
       { name: "Status", value: user.status ?? "unknown", inline: true },
       { name: "Profile", value: user.profile ?? "unset", inline: true },
-      { name: "Discord User ID", value: user.discord_user_id ?? "unknown", inline: true },
-      { name: "Discord Tag", value: user.discord_tag ?? "unknown", inline: false },
+      { name: "Owner", value: formatDiscordOwner(user), inline: false },
       { name: "Created", value: isoOrUnknown(user.created_at), inline: true },
-      { name: "Updated", value: user.updated_at ? new Date(user.updated_at).toISOString() : "never", inline: true },
+      { name: "Updated", value: isoOrUnknown(user.updated_at, "never"), inline: true },
     );
+}
+
+export function buildCredentialEmbed({ username, password, profileName, action }) {
+  const embed = new EmbedBuilder()
+    .setColor(MQTT_EMBED_COLOR)
+    .setTitle(`MQTT Account ${action}`)
+    .addFields(
+      { name: "Username", value: username ?? "unknown", inline: true },
+      { name: "Password", value: password ?? "unknown", inline: false },
+      { name: "Profile", value: profileName ?? "unset", inline: true },
+    )
+    .setFooter({ text: "Keep this password private." });
+
+  Object.defineProperty(embed, SENSITIVE_RESULT, {
+    value: "credential_delivery",
+  });
+
+  return embed;
 }
 
 export function buildProfileListEmbed(profiles) {
@@ -68,7 +97,7 @@ export function buildProfileShowEmbed(profile) {
       { name: "Status", value: profile.status ?? "unknown", inline: true },
       { name: "Default", value: profile.is_default ? "yes" : "no", inline: true },
       { name: "Created", value: isoOrUnknown(profile.created_at), inline: true },
-      { name: "Updated", value: isoOrUnknown(profile.updated_at), inline: true },
+      { name: "Updated", value: isoOrUnknown(profile.updated_at, "never"), inline: true },
       { name: "Rules", value: ruleLines, inline: false },
     );
 
@@ -80,6 +109,12 @@ export function buildProfileShowEmbed(profile) {
 }
 
 export function summarizeCommandResult(result) {
+  if (result?.[SENSITIVE_RESULT]) {
+    return {
+      kind: result[SENSITIVE_RESULT],
+    };
+  }
+
   if (typeof result === "string") {
     return {
       kind: "text",

@@ -112,6 +112,14 @@ async function sendDirectMessage(robot, rawMessage, text) {
   }
 }
 
+async function sendDirectEmbed(rawMessage, embed) {
+  await rawMessage.author.send({ embeds: [embed] });
+}
+
+async function sendDirectEmbedToUser(user, embed) {
+  await user.send({ embeds: [embed] });
+}
+
 async function sendDirectMessageToUser(user, text) {
   const parts = splitMessageForDiscord(text);
 
@@ -134,6 +142,20 @@ export async function deliverDirectMessageToUserId({ robot, userId, text, comman
   await sendDirectMessageToUser(user, text);
 }
 
+export async function deliverDirectEmbedToUserId({ robot, userId, embed, commandName }) {
+  if (!userId) {
+    throw new Error(`${commandName} DM delivery failed: missing Discord user ID`);
+  }
+
+  const client = robot?.adapter?.client;
+  if (!client?.users?.fetch) {
+    throw new Error(`${commandName} DM delivery failed: Discord client is unavailable`);
+  }
+
+  const user = await client.users.fetch(String(userId));
+  await sendDirectEmbedToUser(user, embed);
+}
+
 export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {
   const rawMessage = ctx?.context?.message?.user?.message;
   if (!rawMessage || isDirectMessage(rawMessage)) {
@@ -142,6 +164,21 @@ export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {
 
   try {
     await sendDirectMessage(robot, rawMessage, text);
+    return `I sent the ${commandName} results to you in a DM.`;
+  } catch (error) {
+    robot.logger.warn(`${commandName} DM delivery failed: ${error.message}`);
+    return `I couldn't send you a DM for ${commandName}. Please enable DMs from server members or message me directly.`;
+  }
+}
+
+export async function deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName }) {
+  const rawMessage = ctx?.context?.message?.user?.message;
+  if (!rawMessage || isDirectMessage(rawMessage)) {
+    return embed;
+  }
+
+  try {
+    await sendDirectEmbed(rawMessage, embed);
     return `I sent the ${commandName} results to you in a DM.`;
   } catch (error) {
     robot.logger.warn(`${commandName} DM delivery failed: ${error.message}`);

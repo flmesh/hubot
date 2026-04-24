@@ -32,7 +32,8 @@ test("materializeProfileRule flattens a richer template into an EMQX MongoDB ACL
       who: {
         username: "${username}",
         clientid: "radio-${username}",
-        ipaddress: "127.0.0.1",
+        clientid_re: "^(meshpoint-[A-Fa-f0-9]+)$",
+        ipaddr: "127.0.0.1",
       },
       action: {
         type: "publish",
@@ -41,6 +42,7 @@ test("materializeProfileRule flattens a richer template into an EMQX MongoDB ACL
       },
       topics: [
         { match: "filter", value: "msh/US/FL/LWS/#" },
+        { match: "filter", value: "users/${username}/#" },
       ],
     },
   });
@@ -48,12 +50,13 @@ test("materializeProfileRule flattens a richer template into an EMQX MongoDB ACL
   assert.deepEqual(document, {
     username: "jbouse",
     clientid: "radio-jbouse",
-    ipaddress: "127.0.0.1",
+    clientid_re: "^(meshpoint-[A-Fa-f0-9]+)$",
+    ipaddr: "127.0.0.1",
     permission: "deny",
     action: "publish",
     qos: [0, 1],
     retain: false,
-    topics: ["msh/US/FL/LWS/#"],
+    topics: ["msh/US/FL/LWS/#", "users/${username}/#"],
     source_profile: "default",
     managed_by: "hubot-profile",
   });
@@ -78,6 +81,7 @@ test("formatProfileRule includes selectors and action qualifiers when present", 
     who: {
       username: "${username}",
       clientid: "radio-${username}",
+      clientid_re: "^(meshpoint-[A-Fa-f0-9]+)$",
     },
     action: {
       type: "subscribe",
@@ -86,7 +90,7 @@ test("formatProfileRule includes selectors and action qualifiers when present", 
     topics: [{ match: "filter", value: "msh/US/FL/#" }],
   });
 
-  assert.equal(formatted, "allow [clientid=radio-${username}] subscribe qos=1 msh/US/FL/#");
+  assert.equal(formatted, "allow [clientid=radio-${username}, clientid_re=^(meshpoint-[A-Fa-f0-9]+)$] subscribe qos=1 msh/US/FL/#");
 });
 
 test("formatProfileRuleAsEmqxSpec renders the rule in EMQX ACL syntax", () => {
@@ -95,6 +99,7 @@ test("formatProfileRuleAsEmqxSpec renders the rule in EMQX ACL syntax", () => {
     who: {
       username: "${username}",
       clientid: "radio-${username}",
+      clientid_re: "^(meshpoint-[A-Fa-f0-9]+)$",
     },
     action: {
       type: "publish",
@@ -109,6 +114,6 @@ test("formatProfileRuleAsEmqxSpec renders the rule in EMQX ACL syntax", () => {
 
   assert.equal(
     formatted,
-    '{deny, {\'and\', [{user, "${username}"}, {clientid, "radio-${username}"}]}, {publish, [{qos, 1}, {retain, false}]}, ["msh/US/FL/#", {eq, "msh/US/FL/control"}]}.',
+    '{deny, {\'and\', [{user, "${username}"}, {clientid, "radio-${username}"}, {clientid, {re, "^(meshpoint-[A-Fa-f0-9]+)$"}}]}, {publish, [{qos, 1}, {retain, false}]}, ["msh/US/FL/#", {eq, "msh/US/FL/control"}]}.',
   );
 });

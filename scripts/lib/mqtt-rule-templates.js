@@ -19,7 +19,7 @@ function normalizeWho(who) {
   }
 
   const normalized = {};
-  for (const key of ["username", "clientid", "ipaddress"]) {
+  for (const key of ["username", "username_re", "clientid", "clientid_re", "ipaddr"]) {
     if (who[key] !== undefined && who[key] !== null && who[key] !== "") {
       normalized[key] = String(who[key]);
     }
@@ -147,26 +147,29 @@ export function materializeProfileRule({ rule, username, profileName }) {
     throw new Error("profile rule produced an empty username selector");
   }
 
-  const renderedTopics = normalized.topics.map((topic) => {
+  const topics = normalized.topics.map((topic) => {
     if (topic.match !== "filter") {
       throw new Error(`topic match type ${topic.match} is not supported by the current MongoDB ACL materializer`);
     }
-    return renderTemplateString(topic.value, { username });
+    return topic.value;
   });
 
   const document = {
     username: renderedUsername,
     permission: normalized.permission,
     action: normalized.action.type,
-    topics: renderedTopics,
+    topics,
     source_profile: profileName,
     managed_by: "hubot-profile",
   };
 
-  for (const selectorField of ["clientid", "ipaddress"]) {
+  for (const selectorField of ["username_re", "clientid", "clientid_re"]) {
     if (normalized.who[selectorField]) {
       document[selectorField] = renderTemplateString(normalized.who[selectorField], { username });
     }
+  }
+  if (normalized.who.ipaddr) {
+    document.ipaddr = renderTemplateString(normalized.who.ipaddr, { username });
   }
 
   if (normalized.action.qos !== undefined) {
@@ -189,8 +192,14 @@ export function formatProfileRule(rule) {
   if (normalized.who.clientid) {
     selectorParts.push(`clientid=${normalized.who.clientid}`);
   }
-  if (normalized.who.ipaddress) {
-    selectorParts.push(`ipaddress=${normalized.who.ipaddress}`);
+  if (normalized.who.clientid_re) {
+    selectorParts.push(`clientid_re=${normalized.who.clientid_re}`);
+  }
+  if (normalized.who.username_re) {
+    selectorParts.push(`username_re=${normalized.who.username_re}`);
+  }
+  if (normalized.who.ipaddr) {
+    selectorParts.push(`ipaddr=${normalized.who.ipaddr}`);
   }
 
   const actionParts = [normalized.action.type];
@@ -221,8 +230,14 @@ function emqxWhoSpec(who) {
   if (who.clientid) {
     selectorEntries.push(`{clientid, "${who.clientid}"}`);
   }
-  if (who.ipaddress) {
-    selectorEntries.push(`{ipaddr, "${who.ipaddress}"}`);
+  if (who.clientid_re) {
+    selectorEntries.push(`{clientid, {re, "${who.clientid_re}"}}`);
+  }
+  if (who.username_re) {
+    selectorEntries.push(`{username, {re, "${who.username_re}"}}`);
+  }
+  if (who.ipaddr) {
+    selectorEntries.push(`{ipaddr, "${who.ipaddr}"}`);
   }
 
   if (selectorEntries.length === 0) {
