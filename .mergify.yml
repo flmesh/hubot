@@ -11,7 +11,6 @@ pull_request_rules:
         add:
           - dependencies
           - automated
-
   - name: Label Dependabot PRs
     conditions:
       - author=dependabot[bot]
@@ -20,7 +19,6 @@ pull_request_rules:
         add:
           - dependencies
           - automated
-
   - name: Label Other Bot PRs
     conditions:
       - author~=\[bot\]$
@@ -30,7 +28,6 @@ pull_request_rules:
       label:
         add:
           - automated
-
   - name: Label Docs PRs
     conditions:
       - files~=\.md$
@@ -38,7 +35,6 @@ pull_request_rules:
       label:
         add:
           - area/docs
-
   - name: Label Docker PRs
     conditions:
       - files~=^(Dockerfile|docker-compose\.yml|docker-entrypoint\.sh)$
@@ -47,7 +43,6 @@ pull_request_rules:
         add:
           - area/docker
           - needs/manual-test
-
   - name: Label MQTT PRs
     conditions:
       - files~=^(scripts/mqtt\.js|scripts/lib/mqtt-.*\.js|test/mqtt-.*\.test\.js)$
@@ -55,7 +50,6 @@ pull_request_rules:
       label:
         add:
           - area/mqtt
-
   - name: Label High Risk PRs
     conditions:
       - files~=^(scripts/lib/mqtt-(auth|perms|policy|db)\.js|\.github/workflows/.*|docker-entrypoint\.sh)$
@@ -64,7 +58,6 @@ pull_request_rules:
         add:
           - risk/high
           - needs/manual-test
-
   - name: Label CI PRs
     conditions:
       - files~=^\.github/workflows/.*
@@ -72,7 +65,6 @@ pull_request_rules:
       label:
         add:
           - area/ci
-
   - name: Label Test PRs
     conditions:
       - files~=^test/.*
@@ -80,7 +72,6 @@ pull_request_rules:
       label:
         add:
           - area/tests
-
   - name: Label Dependency Manifest PRs
     conditions:
       - files~=^(package\.json|package-lock\.json)$
@@ -88,7 +79,6 @@ pull_request_rules:
       label:
         add:
           - area/deps
-
   - name: Auto-queue ready PRs on main
     conditions:
       - base=main
@@ -97,7 +87,6 @@ pull_request_rules:
     actions:
       queue:
         name: default
-
 merge_protections:
   - name: Do not merge outdated PRs
     description: Make sure PRs are almost up to date before merging
@@ -105,5 +94,13 @@ merge_protections:
       - base = main
     success_conditions:
       - "#commits-behind <= 10"
+  - name: Enforce conventional commit
+    description: Make sure that we follow https://www.conventionalcommits.org/en/v1.0.0/
+    if:
+      - base = main
+    success_conditions:
+      - "title ~=
+        ^(fix|feat|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\\(.+\
+        \\))?:"
 merge_protections_settings:
   reporting_method: check-runs
