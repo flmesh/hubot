@@ -118,7 +118,7 @@ Notes on the profile rule model:
 
 - `profiles.rules` is the canonical policy template format managed by Hubot.
 - `mqtt_acl` remains the flattened, EMQX-facing materialized form queried by the MongoDB authorizer.
-- The current Hubot materializer supports selector fields `username`, `clientid`, and `ipaddress`; action type `publish`, `subscribe`, or `all`; optional `qos` and `retain`; and filter-style topic entries.
+- The current Hubot materializer supports selector fields `username`, `username_re`, `clientid`, `clientid_re`, and `ipaddr`; action type `publish`, `subscribe`, or `all`; optional `qos` and `retain`; and filter-style topic entries.
 - The richer template format leaves room for future expansion, even though not every EMQX ACL language feature is materialized today.
 
 Indexes:
@@ -140,7 +140,7 @@ One document per ACL rule.  Required fields:
 - `permission`: either `allow` or `deny`.
 - `action`: usually `all` to apply to both publish and subscribe.
 - `topics`: list of topic patterns covered by this rule.
-- Optional selector fields such as `clientid` and `ipaddress` may also be present when a profile rule is materialized with additional constraints.
+- Optional selector fields such as `clientid_re`, `username_re`, and `ipaddr` may also be present in materialized `mqtt_acl` documents.
 - Optional `qos` and `retain` fields may also be present.
 
 Example for a user named `lonewolf` allowed to access only the LWS subtree:
@@ -300,7 +300,7 @@ Only users with the designated Discord admin role (for example “MQTT Admin”)
 - **`/mqtt enable <username>`** – Re‑enables a previously disabled account by setting `status` back to `active`.
 - **`/mqtt rotate <username>`** – Rotates another user’s password.  Generates a new password and updates the `users` record.  This should be used when an admin must revoke or change a password on behalf of a user.
 - **`/mqtt whois <username>`** – Displays ownership information for a given MQTT username, including the Discord user ID and tag, profile and account status.
-- **`/mqtt set-profile <username> <profile>`** – Changes the administrative profile for an existing account.  Hubot updates the `profile` field in `users` and may update the corresponding ACL rules if profile templates are used.
+- **`/mqtt profile set <username> <profile>`** – Changes the administrative profile for an existing account.  Hubot updates the `profile` field in `users` and may update the corresponding ACL rules if profile templates are used.
 - **`/mqtt profile list`** – Lists available profiles and highlights which one is the default.
 - **`/mqtt profile show <profile>`** – Displays the stored rules and metadata for a profile.
 - **`/mqtt profile create <profile>`** – Creates a new profile definition and its ACL template. Planned for a later phase.
@@ -394,7 +394,7 @@ Same as the self‑service rotate, but selects a different user’s record.
 
 Finds the record in `users` and displays the Discord ownership and status.
 
-### `/mqtt set-profile <username> <profile>` (Admin)
+### `/mqtt profile set <username> <profile>` (Admin)
 
 Updates the user’s `profile` field and regenerates their ACL rules from the selected profile template.
 

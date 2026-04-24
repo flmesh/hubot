@@ -66,6 +66,7 @@ cp .env.example .env
 | `HUBOT_AUTHZ_REPORT_LOOKBACK_MINUTES` | no | `60` | Loki lookback window in minutes for each scheduled summary |
 | `HUBOT_AUTHZ_REPORT_TOP_LIMIT` | no | `10` | Maximum topic+username pairs listed in each embed |
 | `HUBOT_AUTHZ_REPORT_SEND_EMPTY` | no | `false` | If `true`, post an embed even when no denials are found |
+| `HUBOT_DISCORD_PERMISSION_GUILD_ID` | no | `MQTT_ADMIN_GUILD_ID` | Discord guild ID used by command-bus role checks for DM commands |
 | `NODE_LOGS_CACHE_TTL_SECONDS` | no | `30` | Redis cache TTL for `node.logs` replies; set `0` to disable |
 | `MONGO_HOST` | no | `host.docker.internal` | MongoDB host used when `MONGO_URL` is not set |
 | `MONGO_PORT` | no | `27017` | MongoDB port used when `MONGO_URL` is not set |
@@ -74,8 +75,8 @@ cp .env.example .env
 | `MONGO_AUTH_SOURCE` | no | `mqtt` | MongoDB auth source used when `MONGO_URL` is not set |
 | `MONGO_URL` | no | — | Optional full MongoDB connection string override for the `mqtt` account commands |
 | `MONGO_DB_NAME` | no | `mqtt` | MongoDB database name used by the `mqtt` account commands |
+| `MQTT_ADMIN_GUILD_ID` | no | — | Discord guild ID used to verify admin role membership for DM commands |
 | `MQTT_ADMIN_ROLE_IDS` | no | — | Comma-separated Discord role IDs allowed to run MQTT admin commands |
-| `MQTT_ADMIN_ROLE_NAMES` | no | — | Comma-separated Discord role names allowed to run MQTT admin commands |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
 
@@ -184,7 +185,25 @@ export default (robot) => {
 };
 ```
 
-3. Rebuild the Docker image (or restart `npm start` locally) – Hubot loads all files in `scripts/` automatically.
+Command specs can require Discord roles through the command bus:
+
+```js
+robot.commands.register({
+  id: "admin.example",
+  description: "Admin-only example",
+  permissions: {
+    roles: ["env:MQTT_ADMIN_ROLE_IDS"],
+  },
+  handler: async () => "Only admins can run this.",
+});
+```
+
+Role entries can be raw Discord role IDs or `env:VARIABLE` references that
+expand to comma-separated role IDs. For DM commands, role membership is checked
+against `HUBOT_DISCORD_PERMISSION_GUILD_ID`, falling back to
+`MQTT_ADMIN_GUILD_ID`.
+
+3. Rebuild the Docker image (or restart `npm start` locally) - Hubot loads all files in `scripts/` automatically.
 
 For reusable community scripts, install them via npm and list them in `external-scripts.json`.
 
@@ -251,13 +270,14 @@ Supported command forms:
 hubot mqtt.request username:<username>
 hubot mqtt.my-account
 hubot mqtt.rotate
+hubot mqtt.reset username:<username>
 hubot mqtt.whois username:<username>
 hubot mqtt.disable username:<username>
 hubot mqtt.enable username:<username>
-hubot mqtt.set-profile username:<username> profile:<profile>
-hubot mqtt.profile-list
-hubot mqtt.profile-show profile:<profile>
-hubot mqtt.profile-apply profile:<profile>
+hubot mqtt.profile.set username:<username> profile:<profile>
+hubot mqtt.profile.list
+hubot mqtt.profile.show profile:<profile>
+hubot mqtt.profile.apply profile:<profile>
 ```
 
 Behavior:
@@ -272,25 +292,25 @@ Behavior:
 - `mqtt.my-account` shows the caller's current MQTT username, status, profile,
   and creation time.
 - `mqtt.rotate` rotates the caller's password and sends the new password by DM.
-  When invoked with `username:<username>`, it becomes an admin-only rotation
-  path for another user's account and attempts to DM the new password to the
-  account owner.
-- `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and `mqtt.set-profile` are
-  admin-only and require the caller to hold a configured
-  Discord role from `MQTT_ADMIN_ROLE_IDS` or `MQTT_ADMIN_ROLE_NAMES`.
-- `mqtt.profile-list` lists stored profiles, their status, default flag, and
+- `mqtt.reset` resets another user's password and attempts to DM the new
+  password to the account owner.
+- `mqtt.reset`, `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and
+  `mqtt.profile.set` are admin-only and require the caller to hold a configured
+  Discord role from `MQTT_ADMIN_ROLE_IDS`.
+- `mqtt.profile.list` lists stored profiles, their status, default flag, and
   rule counts.
-- `mqtt.profile-show` displays a profile's metadata and ACL template rules.
-- `mqtt.profile-apply` is admin-only and reapplies the selected active profile
+- `mqtt.profile.show` displays a profile's metadata and ACL template rules.
+- `mqtt.profile.apply` is admin-only and reapplies the selected active profile
   template to all accounts currently assigned to that profile.
 - Profile templates in MongoDB now use a richer internal rule schema with
   `who`, `action`, and topic match objects. Hubot compiles those templates into
   the flatter `mqtt_acl` rows EMQX expects.
-- The current materializer supports `username`, `clientid`, and `ipaddress`
-  selectors plus optional `qos` and `retain` action qualifiers. Topic entries
-  are currently compiled only for filter-style matches.
-- `mqtt.my-account`, `mqtt.whois`, `mqtt.profile-list`, and
-  `mqtt.profile-show` return Discord embeds when running under the Discord
+- The current materializer supports `username`, `username_re`, `clientid`,
+  `clientid_re`, and `ipaddr` selectors plus optional `qos` and `retain`
+  action qualifiers. Topic entries are currently compiled only for
+  filter-style matches.
+- `mqtt.my-account`, `mqtt.whois`, `mqtt.profile.list`, and
+  `mqtt.profile.show` return Discord embeds when running under the Discord
   adapter for better readability.
 - `help`, `help <prefix>`, and `<command> --help` are provided by Hubot's
   command bus and currently list registered commands without filtering by the
