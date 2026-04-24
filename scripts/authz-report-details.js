@@ -7,8 +7,8 @@
 // Commands:
 //   hubot authz.report.details [clientid:<id>] [minutes:<n>] [limit:<n>]
 
-import { deliverPossiblyViaDm } from "./dm-delivery.js";
-import { renderFixedWidthTable } from "./lib/fixed-width-table.js";
+import { EmbedBuilder } from "discord.js";
+import { deliverEmbedPossiblyViaDm } from "./dm-delivery.js";
 import {
   AUTHZ_ADMIN_PERMISSIONS,
   DEFAULT_AUTHZ_LOOKBACK_MINUTES,
@@ -22,6 +22,7 @@ const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_LOOKBACK_MINUTES = DEFAULT_AUTHZ_LOOKBACK_MINUTES;
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+const REPORT_COLOR = 0xdc2626;
 
 function parseLookbackMinutes(raw) {
   if (raw == null || raw === "") {
@@ -57,29 +58,99 @@ async function queryLokiAuthzDetails({ robot, lookbackMinutes, clientId }) {
   return parseAuthzDetailsRows(payload);
 }
 
-function renderTable(rows) {
-  const columns = [
-    { key: "clientId", label: "clientid", width: 40 },
-    { key: "username", label: "username", width: 18 },
-    { key: "topic", label: "topic", width: 64 },
-    { key: "count", label: "count", width: 5 },
-  ];
-  return renderFixedWidthTable(columns, rows);
-}
+function aggregateClientTopic(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = `${row.clientId}\u0000${row.topic}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += row.count;
+      continue;
+    }
 
-function buildReply({ rows, lookbackMinutes, clientId, limit }) {
-  const limitedRows = rows.slice(0, limit);
-
-  if (limitedRows.length === 0) {
-    return clientId
-      ? `No AUTHZ denial tuples found for client ${clientId} in the last ${lookbackMinutes} minutes.`
-      : `No AUTHZ denial tuples found in the last ${lookbackMinutes} minutes.`;
+    byKey.set(key, {
+      clientId: row.clientId,
+      topic: row.topic,
+      count: row.count,
+    });
   }
 
-  const scopeLabel = clientId ? `client ${clientId}` : "all clients";
-  const truncatedNote = rows.length > limit ? `, matched ${rows.length}` : "";
-  const header = `authz.report.details for ${scopeLabel} (last ${lookbackMinutes}m, showing ${limitedRows.length}${truncatedNote}${limit === MAX_LIMIT ? `, capped at max ${MAX_LIMIT}` : ""})`;
-  return `${header}\n\`\`\`text\n${renderTable(limitedRows)}\n\`\`\``;
+  const items = Array.from(byKey.values());
+  items.sort((left, right) => right.count - left.count
+    || left.clientId.localeCompare(right.clientId)
+    || left.topic.localeCompare(right.topic));
+  return items;
+}
+
+function formatListLines(lines, fallback) {
+  if (lines.length === 0) {
+    return fallback;
+  }
+
+  let output = "";
+  for (const line of lines) {
+    if (`${output}${line}\n`.length > 1000) {
+      break;
+    }
+    output += `${line}\n`;
+  }
+
+  return output.trim() || fallback;
+}
+
+function buildEmbed({ rows, lookbackMinutes, clientId, limit }) {
+  const totalDenials = rows.reduce((sum, row) => sum + row.count, 0);
+  const scope = clientId ? `client ${clientId}` : "all clients";
+
+  const embed = new EmbedBuilder()
+    .setColor(REPORT_COLOR)
+    .setTitle("MQTT AUTHZ Denial Details")
+    .setDescription(`Denied events for ${scope} in the last ${lookbackMinutes} minutes`)
+    .addFields(
+      { name: "Total Denials", value: String(totalDenials), inline: true },
+      { name: "Unique Tuples", value: String(rows.length), inline: true },
+    )
+    .setTimestamp(new Date());
+
+  if (!clientId) {
+    const clientTopicRows = aggregateClientTopic(rows);
+    const limitedRows = clientTopicRows.slice(0, limit);
+    const lines = limitedRows.map((row, index) => `${index + 1}. ${row.clientId} | ${row.topic}`);
+
+    embed.addFields({
+      name: `Top ${limit} clientid+topic pairs`,
+      value: formatListLines(lines, "No AUTHZ denial tuples found in this window."),
+      inline: false,
+    });
+
+    return embed;
+  }
+
+  const usernames = Array.from(new Set(rows.map((row) => row.username).filter(Boolean))).sort();
+  const topics = new Map();
+  for (const row of rows) {
+    topics.set(row.topic, (topics.get(row.topic) ?? 0) + row.count);
+  }
+
+  const sortedTopics = Array.from(topics.entries())
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((left, right) => right.count - left.count || left.topic.localeCompare(right.topic));
+  const limitedTopics = sortedTopics.slice(0, limit);
+
+  embed.addFields(
+    { name: "Client", value: clientId, inline: true },
+    { name: "Username", value: usernames.join(", ") || "unknown", inline: true },
+    {
+      name: `Topics (${limitedTopics.length}${sortedTopics.length > limit ? ` of ${sortedTopics.length}` : ""})`,
+      value: formatListLines(
+        limitedTopics.map((row, index) => `${index + 1}. ${row.topic}`),
+        "No AUTHZ denial tuples found in this window.",
+      ),
+      inline: false,
+    },
+  );
+
+  return embed;
 }
 
 async function executeAuthzReportDetails({ robot, clientId, lookbackMinutes, limit }) {
@@ -89,7 +160,7 @@ async function executeAuthzReportDetails({ robot, clientId, lookbackMinutes, lim
     clientId,
   });
 
-  return buildReply({
+  return buildEmbed({
     rows,
     lookbackMinutes,
     clientId,
@@ -120,17 +191,17 @@ export default (robot) => {
       "authz.report.details --help",
     ],
     handler: async (ctx) => {
-      const reply = await executeAuthzReportDetails({
+      const embed = await executeAuthzReportDetails({
         robot,
         clientId: normalizeClientId(ctx.args.clientid),
         lookbackMinutes: parseLookbackMinutes(ctx.args.minutes),
         limit: parseLimit(ctx.args.limit),
       });
 
-      return deliverPossiblyViaDm({
+      return deliverEmbedPossiblyViaDm({
         robot,
         ctx,
-        text: reply,
+        embed,
         commandName: "authz.report.details",
       });
     },

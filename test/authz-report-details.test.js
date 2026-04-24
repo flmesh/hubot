@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { EmbedBuilder } from "discord.js";
 
 import installAuthzReportDetails from "../scripts/authz-report-details.js";
 
@@ -115,7 +116,7 @@ function installWithMocks(robot, { result, onFetch } = {}) {
   };
 }
 
-test("authz.report.details returns unique clientid, username, topic tuples in DM", async () => {
+test("authz.report.details returns embed with clientid+topic pairs in DM", async () => {
   const robot = createRobot();
   const restore = installWithMocks(robot);
 
@@ -126,11 +127,14 @@ test("authz.report.details returns unique clientid, username, topic tuples in DM
       args: {},
     }));
 
-    assert.match(reply, /authz\.report\.details for all clients/);
-    assert.match(reply, /MeshtasticPythonMqttProxy-a1b2c3d4/);
-    assert.match(reply, /jbouse/);
-    assert.match(reply, /msh\/US\/FL\/LWS\/2\/json/);
-    assert.match(reply, /!deadbeef/);
+    assert.ok(reply instanceof EmbedBuilder);
+    const json = reply.toJSON();
+    assert.equal(json.title, "MQTT AUTHZ Denial Details");
+    assert.match(json.description ?? "", /all clients/);
+    const topPairs = json.fields.find((field) => field.name.includes("clientid+topic pairs"))?.value ?? "";
+    assert.match(topPairs, /MeshtasticPythonMqttProxy-a1b2c3d4/);
+    assert.match(topPairs, /msh\/US\/FL\/LWS\/2\/json/);
+    assert.equal(topPairs.includes("jbouse"), false);
   } finally {
     restore();
   }
@@ -155,7 +159,15 @@ test("authz.report.details applies optional clientid filter to the Loki query", 
       },
     }));
 
-    assert.match(reply, /authz\.report\.details for client !deadbeef/);
+    assert.ok(reply instanceof EmbedBuilder);
+    const json = reply.toJSON();
+    assert.match(json.description ?? "", /client !deadbeef/);
+    const clientField = json.fields.find((field) => field.name === "Client")?.value ?? "";
+    assert.equal(clientField, "!deadbeef");
+    const usernameField = json.fields.find((field) => field.name === "Username")?.value ?? "";
+    assert.match(usernameField, /other|jbouse/);
+    const topicsField = json.fields.find((field) => String(field.name).startsWith("Topics"))?.value ?? "";
+    assert.equal(topicsField.includes("msh/US/FL/test"), true);
     assert.equal(capturedQuery.includes('| clientid="!deadbeef"'), true);
   } finally {
     restore();
@@ -175,7 +187,7 @@ test("authz.report.details sends results via DM when invoked from a guild", asyn
 
     assert.equal(reply, "I sent the authz.report.details results to you in a DM.");
     assert.equal(robot.dmMessages.length, 1);
-    assert.match(robot.dmMessages[0], /authz\.report\.details for all clients/);
+    assert.ok(robot.dmMessages[0].embeds?.[0] instanceof EmbedBuilder);
   } finally {
     restore();
   }
