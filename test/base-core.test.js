@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { EmbedBuilder } from "discord.js";
 
 import packageMetadata from "../package.json" with { type: "json" };
-import { buildInfoEmbed } from "../scripts/sample.js";
+import { buildInfoEmbed } from "../scripts/base-core.js";
 
 test("buildInfoEmbed includes runtime info and package version", () => {
   const embed = buildInfoEmbed({

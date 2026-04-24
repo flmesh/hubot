@@ -7,6 +7,7 @@
 //   hubot node.logs clientid:<nodeid> [minutes:<n>] [limit:<n>] - Built-in command-bus form.
 
 import { deliverPossiblyViaDm } from "./dm-delivery.js";
+import { escapeLogqlString, parseLokiRangeLines, queryLokiRange } from "./lib/loki-query.js";
 
 const DEFAULT_MINUTES = 15;
 const DEFAULT_LIMIT = 20;
@@ -189,10 +190,6 @@ async function executeNodeLogs({ robot, clientIdInput, minutes, limit }) {
   return reply;
 }
 
-function escapeLogqlString(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function nanosToIso(tsNanos) {
   try {
     const ms = Number(BigInt(tsNanos) / 1000000n);
@@ -303,24 +300,7 @@ function formatEntry(tsNanos, line) {
   };
 }
 
-function parseQueryRangeResult(payload) {
-  if (payload?.status !== "success" || !payload?.data?.result) {
-    return [];
-  }
-
-  const lines = [];
-  for (const stream of payload.data.result) {
-    for (const value of stream.values ?? []) {
-      const tsNanos = value[0];
-      const line = value[1];
-      lines.push({ tsNanos, line });
-    }
-  }
-  return lines;
-}
-
 async function queryLoki({ nodeId, minutes, limit, robot }) {
-  const lokiBaseUrl = process.env.LOKI_URL || "http://loki:3100";
   const escapedAllowedRegex = escapeLogqlString(LOGQL_ALLOWED_CLIENTID_REGEX);
   const escapedNodeId = escapeLogqlString(nodeId);
   const query = `{compose_service="emqx"} | json | clientid=~"${escapedAllowedRegex}" | clientid=~".*${escapedNodeId}"`;
@@ -328,41 +308,17 @@ async function queryLoki({ nodeId, minutes, limit, robot }) {
   const endNs = Date.now() * 1_000_000;
   const startNs = endNs - minutes * 60 * 1_000_000_000;
 
-  const params = new URLSearchParams({
+  const payload = await queryLokiRange({
+    robot,
     query,
-    start: String(startNs),
-    end: String(endNs),
-    limit: String(limit),
-    direction: "BACKWARD",
+    startNs,
+    endNs,
+    limit,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    logPrefix: "node.logs",
   });
 
-  const headers = {};
-  if (process.env.LOKI_USERNAME && process.env.LOKI_PASSWORD) {
-    const token = Buffer.from(`${process.env.LOKI_USERNAME}:${process.env.LOKI_PASSWORD}`).toString("base64");
-    headers.Authorization = `Basic ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${lokiBaseUrl}/loki/api/v1/query_range?${params.toString()}`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      robot.logger.error(`Loki query failed: HTTP ${response.status} ${bodyText}`);
-      throw new Error(`Loki query failed with HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
-    return parseQueryRangeResult(payload);
-  } finally {
-    clearTimeout(timeout);
-  }
+  return parseLokiRangeLines(payload);
 }
 
 export default (robot) => {
