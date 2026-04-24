@@ -1,3 +1,5 @@
+import { escapeLogqlString, queryLokiVector as querySharedLokiVector } from "./loki-query.js";
+
 export const AUTHZ_ADMIN_PERMISSIONS = {
   roles: ["env:MQTT_ADMIN_ROLE_IDS"],
 };
@@ -14,10 +16,6 @@ export function parsePositiveInt(raw, fieldName) {
     throw new Error(`${fieldName} must be a positive integer`);
   }
   return parsed;
-}
-
-function escapeLogqlString(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 export function buildAuthzSummaryQuery(lookbackMinutes) {
@@ -108,38 +106,10 @@ export function parseAuthzDetailsRows(payload) {
 }
 
 export async function queryLokiVector({ robot, query, requestTimeoutMs, logPrefix }) {
-  const lokiBaseUrl = process.env.LOKI_URL || "http://loki:3100";
-  const queryTimeNs = Date.now() * 1_000_000;
-
-  const params = new URLSearchParams({
+  return querySharedLokiVector({
+    robot,
     query,
-    time: String(queryTimeNs),
+    requestTimeoutMs,
+    logPrefix,
   });
-
-  const headers = {};
-  if (process.env.LOKI_USERNAME && process.env.LOKI_PASSWORD) {
-    const token = Buffer.from(`${process.env.LOKI_USERNAME}:${process.env.LOKI_PASSWORD}`).toString("base64");
-    headers.Authorization = `Basic ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
-
-  try {
-    const response = await fetch(`${lokiBaseUrl}/loki/api/v1/query?${params.toString()}`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      robot.logger.error(`${logPrefix} Loki query failed: HTTP ${response.status} ${bodyText}`);
-      throw new Error(`Loki query failed with HTTP ${response.status}`);
-    }
-
-    return response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
 }
