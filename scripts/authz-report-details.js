@@ -8,6 +8,7 @@
 //   hubot authz.report.details [clientid:<id>] [minutes:<n>] [limit:<n>]
 
 import { deliverPossiblyViaDm } from "./dm-delivery.js";
+import { renderFixedWidthTable } from "./lib/fixed-width-table.js";
 import {
   AUTHZ_ADMIN_PERMISSIONS,
   DEFAULT_AUTHZ_LOOKBACK_MINUTES,
@@ -56,21 +57,6 @@ async function queryLokiAuthzDetails({ robot, lookbackMinutes, clientId }) {
   return parseAuthzDetailsRows(payload);
 }
 
-function truncateCell(value, width) {
-  const normalized = String(value ?? "-").replace(/\s+/g, " ").trim() || "-";
-  if (normalized.length <= width) {
-    return normalized;
-  }
-  if (width <= 1) {
-    return normalized.slice(0, width);
-  }
-  return `${normalized.slice(0, width - 1)}…`;
-}
-
-function padCell(value, width) {
-  return truncateCell(value, width).padEnd(width, " ");
-}
-
 function renderTable(rows) {
   const columns = [
     { key: "clientId", label: "clientid", width: 40 },
@@ -78,13 +64,7 @@ function renderTable(rows) {
     { key: "topic", label: "topic", width: 64 },
     { key: "count", label: "count", width: 5 },
   ];
-
-  const header = columns.map((column) => padCell(column.label, column.width)).join(" ");
-  const lines = rows.map((row) =>
-    columns.map((column) => padCell(row[column.key], column.width)).join(" "),
-  );
-
-  return [header, ...lines].join("\n");
+  return renderFixedWidthTable(columns, rows);
 }
 
 function buildReply({ rows, lookbackMinutes, clientId, limit }) {

@@ -10,6 +10,8 @@
 
 import { deliverPossiblyViaDm } from "./dm-delivery.js";
 import { escapeLogqlString, parseLokiRangeLines, queryLokiRange } from "./lib/loki-query.js";
+import { readCachedText, writeCachedText } from "./lib/redis-cache.js";
+import { renderFixedWidthTable } from "./lib/fixed-width-table.js";
 
 const DEFAULT_MINUTES = 15;
 const DEFAULT_LIMIT = 20;
@@ -22,10 +24,7 @@ const NODE_ID_INPUT_PATTERN = /^!?([A-Fa-f0-9]{8})$/;
 const DECIMAL_NODE_ID_INPUT_PATTERN = /^\d+$/;
 const BROADCAST_NODE_ID = "ffffffff";
 const MAX_NODE_ID = 0xffffffffn;
-
-let redisClientPromise;
-let redisUnavailable = false;
-let redisWarningLogged = false;
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 function normalizeRequestedNodeId(value) {
   const trimmed = String(value ?? "").trim();
@@ -91,82 +90,33 @@ function getCacheTtlSeconds() {
   return parsePositiveInt(raw, "NODE_TRACE_CACHE_TTL_SECONDS");
 }
 
-function getRedisUrl() {
-  return process.env.REDIS_URL || "redis://localhost:6379";
-}
-
 function cacheKeyFor({ fromNodeId, toNodeId, traceId, minutes, limit }) {
   return `hubot:node-trace:v3:from=${fromNodeId || "-"}:to=${toNodeId || "-"}:id=${traceId || "-"}:${minutes}:${limit}`;
 }
 
-async function getRedisClient(robot) {
-  if (redisUnavailable) {
-    return null;
-  }
-
-  if (!redisClientPromise) {
-    redisClientPromise = import("redis")
-      .then(({ createClient }) => {
-        const client = createClient({ url: getRedisUrl() });
-        client.on("error", (error) => {
-          if (!redisWarningLogged) {
-            redisWarningLogged = true;
-            robot.logger.warn(`node.trace redis cache unavailable: ${error.message}`);
-          }
-        });
-        return client.connect().then(() => client);
-      })
-      .catch((error) => {
-        redisUnavailable = true;
-        robot.logger.warn(`node.trace redis cache disabled: ${error.message}`);
-        return null;
-      });
-  }
-
-  try {
-    return await redisClientPromise;
-  } catch (error) {
-    redisUnavailable = true;
-    robot.logger.warn(`node.trace redis cache disabled: ${error.message}`);
-    return null;
-  }
-}
-
 async function getCachedReply({ robot, fromNodeId, toNodeId, traceId, minutes, limit }) {
   const ttlSeconds = getCacheTtlSeconds();
-  if (ttlSeconds <= 0) {
-    return null;
-  }
-
-  const client = await getRedisClient(robot);
-  if (!client) {
-    return null;
-  }
-
-  try {
-    return await client.get(cacheKeyFor({ fromNodeId, toNodeId, traceId, minutes, limit }));
-  } catch (error) {
-    robot.logger.warn(`node.trace redis cache read failed: ${error.message}`);
-    return null;
-  }
+  return readCachedText({
+    robot,
+    cacheName: "node.trace",
+    redisUrl: REDIS_URL,
+    key: cacheKeyFor({ fromNodeId, toNodeId, traceId, minutes, limit }),
+    ttlSeconds,
+    logPrefix: "node.trace",
+  });
 }
 
 async function setCachedReply({ robot, fromNodeId, toNodeId, traceId, minutes, limit, reply }) {
   const ttlSeconds = getCacheTtlSeconds();
-  if (ttlSeconds <= 0) {
-    return;
-  }
-
-  const client = await getRedisClient(robot);
-  if (!client) {
-    return;
-  }
-
-  try {
-    await client.set(cacheKeyFor({ fromNodeId, toNodeId, traceId, minutes, limit }), reply, { EX: ttlSeconds });
-  } catch (error) {
-    robot.logger.warn(`node.trace redis cache write failed: ${error.message}`);
-  }
+  await writeCachedText({
+    robot,
+    cacheName: "node.trace",
+    redisUrl: REDIS_URL,
+    key: cacheKeyFor({ fromNodeId, toNodeId, traceId, minutes, limit }),
+    ttlSeconds,
+    text: reply,
+    logPrefix: "node.trace",
+  });
 }
 
 function formatNodeRefForLogql(nodeId) {
@@ -237,21 +187,6 @@ function formatDisplayNodeRef(value) {
   return value ?? "-";
 }
 
-function truncateCell(value, width) {
-  const normalized = String(value ?? "-").replace(/\s+/g, " ").trim() || "-";
-  if (normalized.length <= width) {
-    return normalized;
-  }
-  if (width <= 1) {
-    return normalized.slice(0, width);
-  }
-  return `${normalized.slice(0, width - 1)}…`;
-}
-
-function padCell(value, width) {
-  return truncateCell(value, width).padEnd(width, " ");
-}
-
 function renderTable(rows, fromNodeId, toNodeId, traceId) {
   const columns = [
     { key: "time", label: "time", width: 20 },
@@ -276,13 +211,7 @@ function renderTable(rows, fromNodeId, toNodeId, traceId) {
     { key: "viaMqtt", label: "mqtt", width: 4 },
     { key: "topic", label: "topic", width: 40 },
   );
-
-  const header = columns.map((column) => padCell(column.label, column.width)).join(" ");
-  const lines = rows.map((row) =>
-    columns.map((column) => padCell(row[column.key], column.width)).join(" "),
-  );
-
-  return [header, ...lines].join("\n");
+  return renderFixedWidthTable(columns, rows);
 }
 
 function formatTraceEntry(entry) {
