@@ -15,6 +15,9 @@ const DEFAULT_TOP_LIMIT = 10;
 const DEFAULT_RUN_MINUTE = 0;
 const DEFAULT_SEND_EMPTY = false;
 const REPORT_COLOR = 0xdc2626;
+const AUTHZ_ADMIN_PERMISSIONS = {
+  roles: ["env:MQTT_ADMIN_ROLE_IDS"],
+};
 
 function parsePositiveInt(raw, fieldName) {
   if (!/^\d+$/.test(String(raw ?? ""))) {
@@ -329,6 +332,7 @@ export default (robot) => {
       aliases: [
         "authz report now",
       ],
+      permissions: AUTHZ_ADMIN_PERMISSIONS,
       confirm: "never",
       handler: async (ctx) => {
         if (isDirectMessageContext(ctx)) {
