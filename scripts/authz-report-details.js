@@ -106,16 +106,19 @@ function buildEmbed({ rows, lookbackMinutes, clientId, limit }) {
     .setColor(REPORT_COLOR)
     .setTitle("MQTT AUTHZ Denial Details")
     .setDescription(`Denied events for ${scope} in the last ${lookbackMinutes} minutes`)
-    .addFields(
-      { name: "Total Denials", value: String(totalDenials), inline: true },
-      { name: "Unique Tuples", value: String(rows.length), inline: true },
-    )
+    .addFields({ name: "Total Denials", value: String(totalDenials), inline: true })
     .setTimestamp(new Date());
 
   if (!clientId) {
     const clientTopicRows = aggregateClientTopic(rows);
     const limitedRows = clientTopicRows.slice(0, limit);
     const lines = limitedRows.map((row, index) => `${index + 1}. ${row.clientId} | ${row.topic}`);
+
+    embed.addFields({
+      name: "Unique Pairs",
+      value: String(clientTopicRows.length),
+      inline: true,
+    });
 
     embed.addFields({
       name: `Top ${limit} clientid+topic pairs`,
@@ -136,6 +139,12 @@ function buildEmbed({ rows, lookbackMinutes, clientId, limit }) {
     .map(([topic, count]) => ({ topic, count }))
     .sort((left, right) => right.count - left.count || left.topic.localeCompare(right.topic));
   const limitedTopics = sortedTopics.slice(0, limit);
+
+  embed.addFields({
+    name: "Unique Topics",
+    value: String(sortedTopics.length),
+    inline: true,
+  });
 
   embed.addFields(
     { name: "Client", value: clientId, inline: true },
