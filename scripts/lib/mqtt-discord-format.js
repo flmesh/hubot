@@ -176,11 +176,19 @@ export function buildBanListEmbed({ bans, meta }) {
   }
 
   // One field per ban: name = full client ID (copyable), value = type + expiry
-  const fields = bans.slice(0, 25).map((ban) => ({
-    name: String(ban.who ?? "unknown"),
-    value: formatBanUntil(ban.until),
-    inline: false,
-  }));
+  const fields = bans.slice(0, 25).map((ban) => {
+    const until = formatBanUntil(ban.until);
+    const expiryLine = ban.until && ban.until !== "infinity"
+      ? `📅 ${until}`
+      : `♾️ ${until}`;
+    const reason = String(ban.reason ?? "").trim();
+    const value = reason ? `${expiryLine}\n${reason}` : expiryLine;
+    return {
+      name: String(ban.who ?? "unknown"),
+      value,
+      inline: false,
+    };
+  });
 
   const embed = new EmbedBuilder()
     .setColor(0xf97316)

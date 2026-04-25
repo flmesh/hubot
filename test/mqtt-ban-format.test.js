@@ -48,7 +48,7 @@ test("buildBanListEmbed returns 'No active bans' when empty", () => {
 
 test("buildBanListEmbed renders one field per ban with full client ID as name", () => {
   const bans = [
-    { as: "clientid", who: "bad-client", until: UNIX_TS },
+    { as: "clientid", who: "bad-client", until: UNIX_TS, reason: "policy violation" },
     { as: "clientid", who: "MeshtasticAndroidMqttProxy-!fa204061", until: null },
   ];
   const embed = buildBanListEmbed({ bans, meta: { count: 2, page: 1, limit: 20 } });
@@ -56,14 +56,27 @@ test("buildBanListEmbed renders one field per ban with full client ID as name", 
   assert.equal(json.fields.length, 2);
   assert.equal(json.fields[0].name, "bad-client");
   assert.ok(json.fields[0].value.includes(`<t:${UNIX_TS}:f>`), "first field should have Discord timestamp");
+  assert.ok(json.fields[0].value.includes("📅"), "timed ban should have calendar emoji");
+  assert.ok(json.fields[0].value.includes("policy violation"), "reason should appear in field value");
   assert.equal(json.fields[1].name, "MeshtasticAndroidMqttProxy-!fa204061");
-  assert.ok(json.fields[1].value.includes("permanent"), "second field should show permanent");});
+  assert.ok(json.fields[1].value.includes("permanent"), "second field should show permanent");
+  assert.ok(json.fields[1].value.includes("♾️"), "permanent ban should have infinity emoji");
+});
+
+test("buildBanListEmbed omits reason line when reason is absent", () => {
+  const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
+  const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
+  const json = embed.toJSON();
+  const lines = json.fields[0].value.split("\n");
+  assert.equal(lines.length, 1, "no reason line expected when reason is absent");
+});
 
 test("buildBanListEmbed renders 'permanent' when until is null", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: null }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
   assert.ok(json.fields[0].value.includes("permanent"));
+  assert.ok(json.fields[0].value.includes("♾️"));
 });
 
 test("buildBanListEmbed renders 'permanent' when until is 'infinity'", () => {
@@ -71,6 +84,7 @@ test("buildBanListEmbed renders 'permanent' when until is 'infinity'", () => {
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
   assert.ok(json.fields[0].value.includes("permanent"));
+  assert.ok(json.fields[0].value.includes("♾️"));
 });
 
 test("buildBanListEmbed handles until as an ISO string", () => {
@@ -78,6 +92,7 @@ test("buildBanListEmbed handles until as an ISO string", () => {
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
   assert.ok(json.fields[0].value.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.fields[0].value}`);
+  assert.ok(json.fields[0].value.includes("📅"));
 });
 
 test("buildBanListEmbed shows full client ID without truncation", () => {
