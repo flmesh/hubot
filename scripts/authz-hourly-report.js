@@ -8,24 +8,21 @@
 //   hubot authz.report.now - Run the report immediately.
 
 import { EmbedBuilder } from "discord.js";
+import {
+  AUTHZ_ADMIN_PERMISSIONS,
+  DEFAULT_AUTHZ_LOOKBACK_MINUTES,
+  buildAuthzSummaryQuery,
+  parseAuthzSummaryRows,
+  parsePositiveInt,
+  queryLokiVector,
+} from "./lib/authz-loki.js";
 
 const REQUEST_TIMEOUT_MS = 15000;
-const DEFAULT_LOOKBACK_MINUTES = 60;
+const DEFAULT_LOOKBACK_MINUTES = DEFAULT_AUTHZ_LOOKBACK_MINUTES;
 const DEFAULT_TOP_LIMIT = 10;
 const DEFAULT_RUN_MINUTE = 0;
 const DEFAULT_SEND_EMPTY = false;
 const REPORT_COLOR = 0xdc2626;
-
-function parsePositiveInt(raw, fieldName) {
-  if (!/^\d+$/.test(String(raw ?? ""))) {
-    throw new Error(`${fieldName} must be a positive integer`);
-  }
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${fieldName} must be a positive integer`);
-  }
-  return parsed;
-}
 
 function parseBoolean(raw, defaultValue = false) {
   if (raw == null || raw === "") {
@@ -82,79 +79,15 @@ function getConfig() {
   };
 }
 
-function buildAuthzQuery(lookbackMinutes) {
-  return [
-    "sum by (topic, username) (",
-    "count_over_time(",
-    "{compose_service=\"emqx\", tag=\"AUTHZ\"}",
-    "| json",
-    "| msg=~\"authorization_permission_denied|cannot_publish_to_topic_due_to_not_authorized\"",
-    "| topic!=\"\"",
-    "| username!=\"\"",
-    `[${lookbackMinutes}m]`,
-    ")",
-    ")",
-  ].join(" ");
-}
-
-function parseVectorResult(payload) {
-  if (payload?.status !== "success" || payload?.data?.resultType !== "vector") {
-    return [];
-  }
-
-  const rows = [];
-  for (const item of payload.data.result ?? []) {
-    const topic = String(item?.metric?.topic ?? "").trim();
-    const username = String(item?.metric?.username ?? "").trim();
-    const count = Number(item?.value?.[1] ?? 0);
-
-    if (!topic || !username || !Number.isFinite(count) || count <= 0) {
-      continue;
-    }
-
-    rows.push({ topic, username, count });
-  }
-
-  rows.sort((a, b) => b.count - a.count);
-  return rows;
-}
-
 async function queryLokiAuthzSummary({ robot, lookbackMinutes }) {
-  const lokiBaseUrl = process.env.LOKI_URL || "http://loki:3100";
-  const query = buildAuthzQuery(lookbackMinutes);
-  const queryTimeNs = Date.now() * 1_000_000;
-
-  const params = new URLSearchParams({
-    query,
-    time: String(queryTimeNs),
+  const payload = await queryLokiVector({
+    robot,
+    query: buildAuthzSummaryQuery(lookbackMinutes),
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    logPrefix: "authz.report",
   });
 
-  const headers = {};
-  if (process.env.LOKI_USERNAME && process.env.LOKI_PASSWORD) {
-    const token = Buffer.from(`${process.env.LOKI_USERNAME}:${process.env.LOKI_PASSWORD}`).toString("base64");
-    headers.Authorization = `Basic ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${lokiBaseUrl}/loki/api/v1/query?${params.toString()}`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      robot.logger.error(`authz.report Loki query failed: HTTP ${response.status} ${bodyText}`);
-      throw new Error(`Loki query failed with HTTP ${response.status}`);
-    }
-
-    return parseVectorResult(await response.json());
-  } finally {
-    clearTimeout(timeout);
-  }
+  return parseAuthzSummaryRows(payload);
 }
 
 function renderTopRows(rows, maxRows) {
@@ -329,6 +262,7 @@ export default (robot) => {
       aliases: [
         "authz report now",
       ],
+      permissions: AUTHZ_ADMIN_PERMISSIONS,
       confirm: "never",
       handler: async (ctx) => {
         if (isDirectMessageContext(ctx)) {

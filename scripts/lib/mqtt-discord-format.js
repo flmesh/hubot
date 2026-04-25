@@ -108,6 +108,102 @@ export function buildProfileShowEmbed(profile) {
   return embed;
 }
 
+function parseBanUntilUnix(until) {
+  if (!until || until === "infinity") {
+    return null; // permanent
+  }
+
+  if (typeof until === "number" && Number.isFinite(until)) {
+    return until;
+  }
+
+  const asNum = Number(until);
+  if (Number.isFinite(asNum)) {
+    return asNum;
+  }
+
+  // ISO string or similar — convert to unix seconds
+  try {
+    const ms = new Date(String(until)).getTime();
+    return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+  } catch {
+    return null;
+  }
+}
+
+function formatBanUntil(until) {
+  const unix = parseBanUntilUnix(until);
+  if (unix === null) {
+    return "permanent";
+  }
+
+  // Discord native timestamp: renders in the reader's local timezone
+  return `<t:${unix}:f>`;
+}
+
+export function buildBanEmbed({ as, who, days, until }) {
+  return new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle("MQTT Client Banned")
+    .addFields(
+      { name: "Type", value: as, inline: true },
+      { name: "Identity", value: who, inline: true },
+      { name: "Duration", value: `${days} day${days === 1 ? "" : "s"}`, inline: true },
+      { name: "Expires", value: formatBanUntil(until), inline: false },
+    );
+}
+
+export function buildUnbanEmbed({ as, who }) {
+  return new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle("MQTT Ban Removed")
+    .addFields(
+      { name: "Type", value: as, inline: true },
+      { name: "Identity", value: who, inline: true },
+    );
+}
+
+export function buildBanListEmbed({ bans, meta }) {
+  const count = meta?.count ?? bans.length;
+  const page = meta?.page ?? 1;
+  const limit = meta?.limit ?? bans.length;
+
+  if (bans.length === 0) {
+    return new EmbedBuilder()
+      .setColor(0x6b7280)
+      .setTitle("MQTT Active Bans")
+      .setDescription("No active bans.");
+  }
+
+  // One field per ban: name = full client ID (copyable), value = type + expiry
+  const fields = bans.slice(0, 25).map((ban) => {
+    const until = formatBanUntil(ban.until);
+    const expiryLine = ban.until && ban.until !== "infinity"
+      ? `📅 ${until}`
+      : `♾️ ${until}`;
+    const reason = String(ban.reason ?? "").trim();
+    const value = reason ? `${expiryLine}\n${reason}` : expiryLine;
+    return {
+      name: String(ban.who ?? "unknown"),
+      value,
+      inline: false,
+    };
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf97316)
+    .setTitle("MQTT Active Bans")
+    .addFields(fields);
+
+  // Only show pagination metadata when there are multiple pages or a non-default page
+  const hasMultiplePages = count > limit || page > 1;
+  if (hasMultiplePages) {
+    embed.setFooter({ text: `Page ${page} · Showing ${bans.length} of ${count}` });
+  }
+
+  return embed;
+}
+
 export function summarizeCommandResult(result) {
   if (result?.[SENSITIVE_RESULT]) {
     return {

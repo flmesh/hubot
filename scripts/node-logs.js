@@ -7,6 +7,9 @@
 //   hubot node.logs clientid:<nodeid> [minutes:<n>] [limit:<n>] - Built-in command-bus form.
 
 import { deliverPossiblyViaDm } from "./dm-delivery.js";
+import { escapeLogqlString, parseLokiRangeLines, queryLokiRange } from "./lib/loki-query.js";
+import { readCachedText, writeCachedText } from "./lib/redis-cache.js";
+import { renderFixedWidthTable } from "./lib/fixed-width-table.js";
 
 const DEFAULT_MINUTES = 15;
 const DEFAULT_LIMIT = 20;
@@ -18,12 +21,9 @@ const DEFAULT_CACHE_TTL_SECONDS = 30;
 const NODE_ID_INPUT_PATTERN = /^!?([A-Fa-f0-9]{8})$/;
 const DECIMAL_NODE_ID_INPUT_PATTERN = /^\d+$/;
 const MAX_NODE_ID = 0xffffffffn;
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const LOGQL_ALLOWED_CLIENTID_REGEX =
   "^(MeshtasticPythonMqttProxy-[A-Za-z0-9!_-]+|MeshtasticAppleMqttProxy-!?[A-Za-z0-9_-]+|MeshtasticAndroidMqttProxy-!?[A-Za-z0-9_-]+|![A-Za-z0-9]+)$";
-
-let redisClientPromise;
-let redisUnavailable = false;
-let redisWarningLogged = false;
 
 function normalizeRequestedNodeId(value) {
   const trimmed = String(value ?? "").trim();
@@ -64,84 +64,33 @@ function getCacheTtlSeconds() {
   return parsePositiveInt(raw, "NODE_LOGS_CACHE_TTL_SECONDS");
 }
 
-function getRedisUrl() {
-  return process.env.REDIS_URL || "redis://localhost:6379";
-}
-
 function cacheKeyFor({ nodeId, minutes, limit }) {
   return `hubot:node-logs:v1:${nodeId}:${minutes}:${limit}`;
 }
 
-async function getRedisClient(robot) {
-  if (redisUnavailable) {
-    return null;
-  }
-
-  if (!redisClientPromise) {
-    redisClientPromise = import("redis")
-      .then(({ createClient }) => {
-        const client = createClient({ url: getRedisUrl() });
-        client.on("error", (error) => {
-          if (!redisWarningLogged) {
-            redisWarningLogged = true;
-            robot.logger.warn(`node.logs redis cache unavailable: ${error.message}`);
-          }
-        });
-        return client.connect().then(() => client);
-      })
-      .catch((error) => {
-        redisUnavailable = true;
-        robot.logger.warn(`node.logs redis cache disabled: ${error.message}`);
-        return null;
-      });
-  }
-
-  try {
-    return await redisClientPromise;
-  } catch (error) {
-    redisUnavailable = true;
-    robot.logger.warn(`node.logs redis cache disabled: ${error.message}`);
-    return null;
-  }
-}
-
 async function getCachedReply({ robot, nodeId, minutes, limit }) {
   const ttlSeconds = getCacheTtlSeconds();
-  if (ttlSeconds <= 0) {
-    return null;
-  }
-
-  const client = await getRedisClient(robot);
-  if (!client) {
-    return null;
-  }
-
-  try {
-    return await client.get(cacheKeyFor({ nodeId, minutes, limit }));
-  } catch (error) {
-    robot.logger.warn(`node.logs redis cache read failed: ${error.message}`);
-    return null;
-  }
+  return readCachedText({
+    robot,
+    cacheName: "node.logs",
+    redisUrl: REDIS_URL,
+    key: cacheKeyFor({ nodeId, minutes, limit }),
+    ttlSeconds,
+    logPrefix: "node.logs",
+  });
 }
 
 async function setCachedReply({ robot, nodeId, minutes, limit, reply }) {
   const ttlSeconds = getCacheTtlSeconds();
-  if (ttlSeconds <= 0) {
-    return;
-  }
-
-  const client = await getRedisClient(robot);
-  if (!client) {
-    return;
-  }
-
-  try {
-    await client.set(cacheKeyFor({ nodeId, minutes, limit }), reply, {
-      EX: ttlSeconds,
-    });
-  } catch (error) {
-    robot.logger.warn(`node.logs redis cache write failed: ${error.message}`);
-  }
+  await writeCachedText({
+    robot,
+    cacheName: "node.logs",
+    redisUrl: REDIS_URL,
+    key: cacheKeyFor({ nodeId, minutes, limit }),
+    ttlSeconds,
+    text: reply,
+    logPrefix: "node.logs",
+  });
 }
 
 function buildReply(entries, requestedNodeId, minutes, limit) {
@@ -187,10 +136,6 @@ async function executeNodeLogs({ robot, clientIdInput, minutes, limit }) {
     reply,
   });
   return reply;
-}
-
-function escapeLogqlString(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function nanosToIso(tsNanos) {
@@ -257,21 +202,6 @@ function parseLogLine(line) {
   }
 }
 
-function truncateCell(value, width) {
-  const normalized = String(value ?? "-").replace(/\s+/g, " ").trim() || "-";
-  if (normalized.length <= width) {
-    return normalized;
-  }
-  if (width <= 1) {
-    return normalized.slice(0, width);
-  }
-  return `${normalized.slice(0, width - 1)}…`;
-}
-
-function padCell(value, width) {
-  return truncateCell(value, width).padEnd(width, " ");
-}
-
 function renderTable(rows) {
   const columns = [
     { key: "time", label: "time", width: 20 },
@@ -281,13 +211,7 @@ function renderTable(rows) {
     { key: "topic", label: "topic", width: 34 },
     { key: "msg", label: "msg", width: 48 },
   ];
-
-  const header = columns.map((column) => padCell(column.label, column.width)).join(" ");
-  const lines = rows.map((row) =>
-    columns.map((column) => padCell(row[column.key], column.width)).join(" "),
-  );
-
-  return [header, ...lines].join("\n");
+  return renderFixedWidthTable(columns, rows);
 }
 
 function formatEntry(tsNanos, line) {
@@ -303,24 +227,7 @@ function formatEntry(tsNanos, line) {
   };
 }
 
-function parseQueryRangeResult(payload) {
-  if (payload?.status !== "success" || !payload?.data?.result) {
-    return [];
-  }
-
-  const lines = [];
-  for (const stream of payload.data.result) {
-    for (const value of stream.values ?? []) {
-      const tsNanos = value[0];
-      const line = value[1];
-      lines.push({ tsNanos, line });
-    }
-  }
-  return lines;
-}
-
 async function queryLoki({ nodeId, minutes, limit, robot }) {
-  const lokiBaseUrl = process.env.LOKI_URL || "http://loki:3100";
   const escapedAllowedRegex = escapeLogqlString(LOGQL_ALLOWED_CLIENTID_REGEX);
   const escapedNodeId = escapeLogqlString(nodeId);
   const query = `{compose_service="emqx"} | json | clientid=~"${escapedAllowedRegex}" | clientid=~".*${escapedNodeId}"`;
@@ -328,41 +235,17 @@ async function queryLoki({ nodeId, minutes, limit, robot }) {
   const endNs = Date.now() * 1_000_000;
   const startNs = endNs - minutes * 60 * 1_000_000_000;
 
-  const params = new URLSearchParams({
+  const payload = await queryLokiRange({
+    robot,
     query,
-    start: String(startNs),
-    end: String(endNs),
-    limit: String(limit),
-    direction: "BACKWARD",
+    startNs,
+    endNs,
+    limit,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    logPrefix: "node.logs",
   });
 
-  const headers = {};
-  if (process.env.LOKI_USERNAME && process.env.LOKI_PASSWORD) {
-    const token = Buffer.from(`${process.env.LOKI_USERNAME}:${process.env.LOKI_PASSWORD}`).toString("base64");
-    headers.Authorization = `Basic ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${lokiBaseUrl}/loki/api/v1/query_range?${params.toString()}`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      robot.logger.error(`Loki query failed: HTTP ${response.status} ${bodyText}`);
-      throw new Error(`Loki query failed with HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
-    return parseQueryRangeResult(payload);
-  } finally {
-    clearTimeout(timeout);
-  }
+  return parseLokiRangeLines(payload);
 }
 
 export default (robot) => {
