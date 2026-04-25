@@ -108,35 +108,47 @@ export function buildProfileShowEmbed(profile) {
   return embed;
 }
 
-function parseBanUntil(until) {
+const BAN_WHO_MAX_LEN = 32;
+
+function truncateWho(who) {
+  const s = String(who ?? "");
+  return s.length > BAN_WHO_MAX_LEN ? `${s.slice(0, BAN_WHO_MAX_LEN - 1)}…` : s;
+}
+
+function parseBanUntilUnix(until) {
   if (!until || until === "infinity") {
-    return "permanent";
+    return null; // permanent
   }
 
-  // EMQX list API returns until as a Unix integer; the POST body also uses integers.
-  // Guard against ISO strings or other representations just in case.
   if (typeof until === "number" && Number.isFinite(until)) {
-    const date = new Date(until * 1000);
-    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+    return until;
   }
 
   const asNum = Number(until);
   if (Number.isFinite(asNum)) {
-    const date = new Date(asNum * 1000);
-    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+    return asNum;
   }
 
-  // Already an ISO string or similar
+  // ISO string or similar — convert to unix seconds
   try {
-    const date = new Date(String(until));
-    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+    const ms = new Date(String(until)).getTime();
+    return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
   } catch {
-    return String(until);
+    return null;
   }
 }
 
+function formatBanUntil(until) {
+  const unix = parseBanUntilUnix(until);
+  if (unix === null) {
+    return "permanent";
+  }
+
+  // Discord native timestamp: renders in the reader's local timezone
+  return `<t:${unix}:f>`;
+}
+
 export function buildBanEmbed({ as, who, days, until }) {
-  const untilDate = parseBanUntil(until);
   return new EmbedBuilder()
     .setColor(0xef4444)
     .setTitle("MQTT Client Banned")
@@ -144,7 +156,7 @@ export function buildBanEmbed({ as, who, days, until }) {
       { name: "Type", value: as, inline: true },
       { name: "Identity", value: who, inline: true },
       { name: "Duration", value: `${days} day${days === 1 ? "" : "s"}`, inline: true },
-      { name: "Expires", value: untilDate, inline: false },
+      { name: "Expires", value: formatBanUntil(until), inline: false },
     );
 }
 
@@ -171,8 +183,9 @@ export function buildBanListEmbed({ bans, meta }) {
   }
 
   const lines = bans.map((ban, index) => {
-    const until = parseBanUntil(ban.until);
-    return `${index + 1}. \`${ban.who}\` (${ban.as}) — expires ${until}`;
+    const who = truncateWho(ban.who);
+    const until = formatBanUntil(ban.until);
+    return `${index + 1}. \`${who}\` (${ban.as}) — ${until}`;
   });
 
   let value = "";
@@ -183,15 +196,22 @@ export function buildBanListEmbed({ bans, meta }) {
     value += `${line}\n`;
   }
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0xf97316)
     .setTitle("MQTT Active Bans")
-    .setDescription(value.trim())
-    .addFields(
+    .setDescription(value.trim());
+
+  // Only show pagination metadata when there are multiple pages or a non-default page
+  const hasMultiplePages = count > limit || page > 1;
+  if (hasMultiplePages) {
+    embed.addFields(
       { name: "Showing", value: `${bans.length} of ${count}`, inline: true },
       { name: "Page", value: String(page), inline: true },
       { name: "Page Size", value: String(limit), inline: true },
     );
+  }
+
+  return embed;
 }
 
 export function summarizeCommandResult(result) {

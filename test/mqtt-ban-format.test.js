@@ -9,13 +9,20 @@ import {
 
 const UNIX_TS = 1777698236; // 2026-05-02T05:03:56.000Z
 
-test("buildBanEmbed renders correctly for a unix timestamp until", () => {
+test("buildBanEmbed renders a Discord timestamp for a unix until", () => {
   const embed = buildBanEmbed({ as: "clientid", who: "bad-client", days: 7, until: UNIX_TS });
   const json = embed.toJSON();
   assert.equal(json.title, "MQTT Client Banned");
   const expires = json.fields.find((f) => f.name === "Expires");
   assert.ok(expires, "Expires field should exist");
-  assert.equal(expires.value, "2026-05-02T05:03:56.000Z");
+  assert.equal(expires.value, `<t:${UNIX_TS}:f>`);
+});
+
+test("buildBanEmbed renders 'permanent' for null until", () => {
+  const embed = buildBanEmbed({ as: "clientid", who: "bad-client", days: 7, until: null });
+  const json = embed.toJSON();
+  const expires = json.fields.find((f) => f.name === "Expires");
+  assert.equal(expires.value, "permanent");
 });
 
 test("buildBanEmbed renders singular day label", () => {
@@ -39,12 +46,12 @@ test("buildBanListEmbed returns 'No active bans' when empty", () => {
   assert.equal(json.description, "No active bans.");
 });
 
-test("buildBanListEmbed renders bans with unix timestamp until", () => {
+test("buildBanListEmbed renders bans with Discord timestamp", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
   assert.ok(json.description.includes("bad-client"));
-  assert.ok(json.description.includes("2026-05-02T05:03:56.000Z"), `expected ISO date in: ${json.description}`);
+  assert.ok(json.description.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.description}`);
 });
 
 test("buildBanListEmbed renders 'permanent' when until is null", () => {
@@ -65,14 +72,37 @@ test("buildBanListEmbed handles until as an ISO string", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: "2026-05-02T05:03:56.000Z" }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes("2026-05-02T05:03:56.000Z"), `expected ISO date in: ${json.description}`);
+  assert.ok(json.description.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.description}`);
 });
 
-test("buildBanListEmbed includes pagination fields", () => {
+test("buildBanListEmbed truncates long client IDs", () => {
+  const longWho = "MeshtasticAndroidMqttProxy-!fa204061verylongextra";
+  const bans = [{ as: "clientid", who: longWho, until: UNIX_TS }];
+  const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
+  const json = embed.toJSON();
+  assert.ok(!json.description.includes(longWho), "full long ID should not appear");
+  assert.ok(json.description.includes("…"), "truncated ID should end with ellipsis");
+});
+
+test("buildBanListEmbed omits pagination fields when all results fit on one page", () => {
+  const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
+  const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
+  const json = embed.toJSON();
+  assert.equal(json.fields?.length ?? 0, 0, "no pagination fields expected for single-page result");
+});
+
+test("buildBanListEmbed includes pagination fields when count exceeds limit", () => {
+  const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
+  const embed = buildBanListEmbed({ bans, meta: { count: 25, page: 1, limit: 20 } });
+  const json = embed.toJSON();
+  assert.ok(json.fields.some((f) => f.name === "Showing" && f.value === "1 of 25"));
+  assert.ok(json.fields.some((f) => f.name === "Page" && f.value === "1"));
+  assert.ok(json.fields.some((f) => f.name === "Page Size" && f.value === "20"));
+});
+
+test("buildBanListEmbed includes pagination fields on page > 1", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 5, page: 2, limit: 10 } });
   const json = embed.toJSON();
-  assert.ok(json.fields.some((f) => f.name === "Showing" && f.value === "1 of 5"));
   assert.ok(json.fields.some((f) => f.name === "Page" && f.value === "2"));
-  assert.ok(json.fields.some((f) => f.name === "Page Size" && f.value === "10"));
 });
