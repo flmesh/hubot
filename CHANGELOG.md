@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.0](https://github.com/flmesh/hubot/compare/v1.2.0...v1.3.0) (2026-04-25)
+
+
+### Features
+
+* add authz.report.details command to query unique AUTHZ denial tuples ([760236a](https://github.com/flmesh/hubot/commit/760236a62b2567397ba305ec134392a56b4fadde))
+* add initial Hubot script with basic commands and runtime info embed ([b3af188](https://github.com/flmesh/hubot/commit/b3af188bba13ac3a6ca94c66347de2df9e350f61))
+* enhance embed details in authz report by adding unique pairs and topics fields ([56d8096](https://github.com/flmesh/hubot/commit/56d8096f8d69d3547e944a1fe8c55ebf5ab86642))
+* implement Loki query functions and integrate them into node logs and trace scripts ([db3b202](https://github.com/flmesh/hubot/commit/db3b2028383982bde3e9027cb277930ff868236d))
+* integrate Redis caching into node logs and trace scripts, and refactor table rendering ([eda357f](https://github.com/flmesh/hubot/commit/eda357ff2da790c68d10295ad96596c307dc7e12))
+* **mqtt:** add mqtt.ban, mqtt.unban, and mqtt.ban.list commands ([4bd34a0](https://github.com/flmesh/hubot/commit/4bd34a0136419c2ebb359a568414147e364a94e4))
+* **mqtt:** add mqtt.ban, mqtt.unban, and mqtt.ban.list commands ([f060b0b](https://github.com/flmesh/hubot/commit/f060b0ba0c99f8582e8b6fc00664bd82bbb7446b))
+* **mqtt:** enrich ban list field values with emoji and reason ([e33d7b3](https://github.com/flmesh/hubot/commit/e33d7b310bee16bc8bcc7444eafd9dae08f9fed7))
+* **mqtt:** improve ban list embed formatting ([9344941](https://github.com/flmesh/hubot/commit/9344941b53294c86ef0b39a9ba0439222b529cf3))
+* refactor AUTHZ report scripts to utilize shared Loki query functions and constants ([b3ed834](https://github.com/flmesh/hubot/commit/b3ed834697d0ce11a77449c16af583f25b0f1037))
+* refactor Loki query functions to improve modularity and reuse ([6b86d5a](https://github.com/flmesh/hubot/commit/6b86d5ac784ad59184934de51e043e141d642ac4))
+* update authz.report.details to return embeds with clientid+topic pairs and refactor related tests ([f5ee0f0](https://github.com/flmesh/hubot/commit/f5ee0f0adc941b21ed3ce6d5452161b9d8155282))
+
+
+### Bug Fixes
+
+* **mqtt:** handle all until formats in ban embed rendering ([7e54008](https://github.com/flmesh/hubot/commit/7e540089cf2258b640b1cf3d4f2ed56d44552a91))
+* **mqtt:** show full client ID below truncated display in ban list ([c4d22b8](https://github.com/flmesh/hubot/commit/c4d22b87609a334649cb892cb0527551e607cb41))
+
 ## [1.2.0](https://github.com/flmesh/hubot/compare/v1.1.0...v1.2.0) (2026-04-23)
 
 
