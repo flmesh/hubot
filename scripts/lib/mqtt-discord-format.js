@@ -108,8 +108,35 @@ export function buildProfileShowEmbed(profile) {
   return embed;
 }
 
+function parseBanUntil(until) {
+  if (!until || until === "infinity") {
+    return "permanent";
+  }
+
+  // EMQX list API returns until as a Unix integer; the POST body also uses integers.
+  // Guard against ISO strings or other representations just in case.
+  if (typeof until === "number" && Number.isFinite(until)) {
+    const date = new Date(until * 1000);
+    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+  }
+
+  const asNum = Number(until);
+  if (Number.isFinite(asNum)) {
+    const date = new Date(asNum * 1000);
+    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+  }
+
+  // Already an ISO string or similar
+  try {
+    const date = new Date(String(until));
+    return Number.isNaN(date.getTime()) ? String(until) : date.toISOString();
+  } catch {
+    return String(until);
+  }
+}
+
 export function buildBanEmbed({ as, who, days, until }) {
-  const untilDate = new Date(until * 1000).toISOString();
+  const untilDate = parseBanUntil(until);
   return new EmbedBuilder()
     .setColor(0xef4444)
     .setTitle("MQTT Client Banned")
@@ -144,7 +171,7 @@ export function buildBanListEmbed({ bans, meta }) {
   }
 
   const lines = bans.map((ban, index) => {
-    const until = ban.until ? new Date(ban.until * 1000).toISOString() : "permanent";
+    const until = parseBanUntil(ban.until);
     return `${index + 1}. \`${ban.who}\` (${ban.as}) — expires ${until}`;
   });
 
