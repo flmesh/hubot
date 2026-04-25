@@ -18,8 +18,12 @@ import {
   buildProfileListEmbed,
   buildProfileShowEmbed,
   buildWhoisEmbed,
+  buildBanEmbed,
+  buildUnbanEmbed,
+  buildBanListEmbed,
   summarizeCommandResult,
 } from "./lib/mqtt-discord-format.js";
+import { banClient, unbanClient, listBans, getDefaultBanDays } from "./lib/mqtt-emqx-api.js";
 import { verifyAdminGuildOnReady } from "./lib/mqtt-perms.js";
 import { validateUsernamePolicy } from "./lib/mqtt-policy.js";
 import {
@@ -392,11 +396,60 @@ async function applyProfileTemplate({ robot, ctx }) {
   return `Reapplied profile ${profile.name} to ${matchedUsers} MQTT account${matchedUsers === 1 ? "" : "s"}.`;
 }
 
+function parseClientId(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    throw new Error("clientid is required");
+  }
+  return value;
+}
+
+function parseBanDays(raw) {
+  if (raw == null || raw === "") {
+    return getDefaultBanDays();
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error("days must be a positive integer");
+  }
+
+  return parsed;
+}
+
+async function banMqttClient({ ctx }) {
+  const clientId = parseClientId(ctx.args.clientid);
+  const days = parseBanDays(ctx.args.days);
+  const reason = String(ctx.args.reason ?? "").trim() || undefined;
+
+  const result = await banClient({ as: "clientid", who: clientId, reason, days });
+
+  return buildBanEmbed(result);
+}
+
+async function unbanMqttClient({ ctx }) {
+  const clientId = parseClientId(ctx.args.clientid);
+
+  await unbanClient({ as: "clientid", who: clientId });
+
+  return buildUnbanEmbed({ as: "clientid", who: clientId });
+}
+
+async function listMqttBans({ ctx }) {
+  const page = ctx.args.page ?? 1;
+  const limit = ctx.args.limit ?? 20;
+
+  const { data, meta } = await listBans({ page, limit });
+
+  return buildBanListEmbed({ bans: data, meta });
+}
+
 function buildAuditMetadata(commandId, ctx, result, error) {
   const args = ctx?.args ?? {};
 
   return {
     target_username: args.username ?? result?.username ?? null,
+    target_clientid: args.clientid ?? result?.who ?? null,
     target_profile: args.profile ?? result?.profileName ?? null,
     delivery: typeof result === "string" && result.includes("DM")
       ? "discord-dm"
@@ -672,6 +725,74 @@ export function registerMqttCommands(robot, {
       "mqtt.profile.apply --profile default",
     ],
     handler: wrapHandler("mqtt.profile.apply", async (ctx) => applyProfileTemplate({ robot, ctx }), { auditEvent, auditUpdate }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.ban",
+    description: "Ban an MQTT client from connecting",
+    aliases: [
+      "mqtt ban",
+    ],
+    args: {
+      clientid: { type: "string", required: true },
+      reason: { type: "string", required: false },
+      days: { type: "number", required: false },
+    },
+    confirm: "always",
+    permissions: MQTT_ADMIN_PERMISSIONS,
+    examples: [
+      `mqtt.ban clientid:MeshtasticPythonMqttProxy-a1b2c3d4`,
+      `mqtt.ban clientid:badactor reason:"policy violation" days:30`,
+      `mqtt.ban --clientid badactor --days 14`,
+    ],
+    handler: wrapHandler("mqtt.ban", async (ctx) => {
+      const embed = await banMqttClient({ ctx });
+      return deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName: "mqtt.ban" });
+    }, { auditEvent, auditUpdate }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.unban",
+    description: "Remove a ban on an MQTT client",
+    aliases: [
+      "mqtt unban",
+    ],
+    args: {
+      clientid: { type: "string", required: true },
+    },
+    confirm: "always",
+    permissions: MQTT_ADMIN_PERMISSIONS,
+    examples: [
+      "mqtt.unban clientid:MeshtasticPythonMqttProxy-a1b2c3d4",
+      "mqtt.unban --clientid badactor",
+    ],
+    handler: wrapHandler("mqtt.unban", async (ctx) => {
+      const embed = await unbanMqttClient({ ctx });
+      return deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName: "mqtt.unban" });
+    }, { auditEvent, auditUpdate }),
+  });
+
+  robot.commands.register({
+    id: "mqtt.ban.list",
+    description: "List active MQTT client bans",
+    aliases: [
+      "mqtt ban list",
+    ],
+    args: {
+      page: { type: "number", required: false, default: 1 },
+      limit: { type: "number", required: false, default: 20 },
+    },
+    confirm: "never",
+    permissions: MQTT_ADMIN_PERMISSIONS,
+    examples: [
+      "mqtt.ban.list",
+      "mqtt.ban.list page:2 limit:50",
+      "mqtt.ban.list --help",
+    ],
+    handler: wrapHandler("mqtt.ban.list", async (ctx) => {
+      const embed = await listMqttBans({ ctx });
+      return deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName: "mqtt.ban.list" });
+    }, { auditEvent, auditUpdate }),
   });
 }
 

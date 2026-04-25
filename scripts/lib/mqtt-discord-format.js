@@ -108,6 +108,65 @@ export function buildProfileShowEmbed(profile) {
   return embed;
 }
 
+export function buildBanEmbed({ as, who, days, until }) {
+  const untilDate = new Date(until * 1000).toISOString();
+  return new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle("MQTT Client Banned")
+    .addFields(
+      { name: "Type", value: as, inline: true },
+      { name: "Identity", value: who, inline: true },
+      { name: "Duration", value: `${days} day${days === 1 ? "" : "s"}`, inline: true },
+      { name: "Expires", value: untilDate, inline: false },
+    );
+}
+
+export function buildUnbanEmbed({ as, who }) {
+  return new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle("MQTT Ban Removed")
+    .addFields(
+      { name: "Type", value: as, inline: true },
+      { name: "Identity", value: who, inline: true },
+    );
+}
+
+export function buildBanListEmbed({ bans, meta }) {
+  const count = meta?.count ?? bans.length;
+  const page = meta?.page ?? 1;
+  const limit = meta?.limit ?? bans.length;
+
+  if (bans.length === 0) {
+    return new EmbedBuilder()
+      .setColor(0x6b7280)
+      .setTitle("MQTT Active Bans")
+      .setDescription("No active bans.");
+  }
+
+  const lines = bans.map((ban, index) => {
+    const until = ban.until ? new Date(ban.until * 1000).toISOString() : "permanent";
+    return `${index + 1}. \`${ban.who}\` (${ban.as}) — expires ${until}`;
+  });
+
+  let value = "";
+  for (const line of lines) {
+    if (`${value}${line}\n`.length > 1000) {
+      break;
+    }
+    value += `${line}\n`;
+  }
+
+  return new EmbedBuilder()
+    .setColor(0xf97316)
+    .setTitle("MQTT Active Bans")
+    .setDescription(value.trim())
+    .addFields(
+      { name: "Showing", value: `${bans.length} of ${count}`, inline: true },
+      { name: "Page", value: String(page), inline: true },
+      { name: "Page Size", value: String(limit), inline: true },
+    );
+}
+
 export function summarizeCommandResult(result) {
   if (result?.[SENSITIVE_RESULT]) {
     return {
