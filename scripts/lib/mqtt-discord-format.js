@@ -110,11 +110,6 @@ export function buildProfileShowEmbed(profile) {
 
 const BAN_WHO_MAX_LEN = 32;
 
-function truncateWho(who) {
-  const s = String(who ?? "");
-  return s.length > BAN_WHO_MAX_LEN ? `${s.slice(0, BAN_WHO_MAX_LEN - 1)}…` : s;
-}
-
 function parseBanUntilUnix(until) {
   if (!until || until === "infinity") {
     return null; // permanent
@@ -183,9 +178,12 @@ export function buildBanListEmbed({ bans, meta }) {
   }
 
   const lines = bans.map((ban, index) => {
-    const who = truncateWho(ban.who);
+    const raw = String(ban.who ?? "");
+    const display = raw.length > BAN_WHO_MAX_LEN ? `${raw.slice(0, BAN_WHO_MAX_LEN - 1)}…` : raw;
     const until = formatBanUntil(ban.until);
-    return `${index + 1}. \`${who}\` (${ban.as}) — ${until}`;
+    const header = `${index + 1}. \`${display}\` (${ban.as}) — ${until}`;
+    // Append full ID on a second line when truncated so it can be copied for mqtt.unban
+    return raw.length > BAN_WHO_MAX_LEN ? `${header}\n    \`${raw}\`` : header;
   });
 
   let value = "";

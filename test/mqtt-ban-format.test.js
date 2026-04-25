@@ -75,13 +75,13 @@ test("buildBanListEmbed handles until as an ISO string", () => {
   assert.ok(json.description.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.description}`);
 });
 
-test("buildBanListEmbed truncates long client IDs", () => {
+test("buildBanListEmbed truncates long client IDs but shows full ID for copying", () => {
   const longWho = "MeshtasticAndroidMqttProxy-!fa204061verylongextra";
   const bans = [{ as: "clientid", who: longWho, until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(!json.description.includes(longWho), "full long ID should not appear");
-  assert.ok(json.description.includes("…"), "truncated ID should end with ellipsis");
+  assert.ok(json.description.includes("…"), "truncated display should end with ellipsis");
+  assert.ok(json.description.includes(longWho), "full ID should appear on second line for copying");
 });
 
 test("buildBanListEmbed omits pagination fields when all results fit on one page", () => {
