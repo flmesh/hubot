@@ -57,8 +57,7 @@ test("buildBanListEmbed renders one field per ban with full client ID as name", 
   assert.equal(json.fields[0].name, "bad-client");
   assert.ok(json.fields[0].value.includes(`<t:${UNIX_TS}:f>`), "first field should have Discord timestamp");
   assert.equal(json.fields[1].name, "MeshtasticAndroidMqttProxy-!fa204061");
-  assert.ok(json.fields[1].value.includes("permanent"), "second field should show permanent");
-});
+  assert.ok(json.fields[1].value.includes("permanent"), "second field should show permanent");});
 
 test("buildBanListEmbed renders 'permanent' when until is null", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: null }];

@@ -178,7 +178,7 @@ export function buildBanListEmbed({ bans, meta }) {
   // One field per ban: name = full client ID (copyable), value = type + expiry
   const fields = bans.slice(0, 25).map((ban) => ({
     name: String(ban.who ?? "unknown"),
-    value: `${ban.as} · ${formatBanUntil(ban.until)}`,
+    value: formatBanUntil(ban.until),
     inline: false,
   }));
 
