@@ -46,63 +46,73 @@ test("buildBanListEmbed returns 'No active bans' when empty", () => {
   assert.equal(json.description, "No active bans.");
 });
 
-test("buildBanListEmbed renders bans with Discord timestamp", () => {
-  const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
-  const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
+test("buildBanListEmbed renders one field per ban with full client ID as name", () => {
+  const bans = [
+    { as: "clientid", who: "bad-client", until: UNIX_TS },
+    { as: "clientid", who: "MeshtasticAndroidMqttProxy-!fa204061", until: null },
+  ];
+  const embed = buildBanListEmbed({ bans, meta: { count: 2, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes("bad-client"));
-  assert.ok(json.description.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.description}`);
+  assert.equal(json.fields.length, 2);
+  assert.equal(json.fields[0].name, "bad-client");
+  assert.ok(json.fields[0].value.includes(`<t:${UNIX_TS}:f>`), "first field should have Discord timestamp");
+  assert.equal(json.fields[1].name, "MeshtasticAndroidMqttProxy-!fa204061");
+  assert.ok(json.fields[1].value.includes("permanent"), "second field should show permanent");
 });
 
 test("buildBanListEmbed renders 'permanent' when until is null", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: null }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes("permanent"), `expected 'permanent' in: ${json.description}`);
+  assert.ok(json.fields[0].value.includes("permanent"));
 });
 
 test("buildBanListEmbed renders 'permanent' when until is 'infinity'", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: "infinity" }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes("permanent"), `expected 'permanent' in: ${json.description}`);
+  assert.ok(json.fields[0].value.includes("permanent"));
 });
 
 test("buildBanListEmbed handles until as an ISO string", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: "2026-05-02T05:03:56.000Z" }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.description}`);
+  assert.ok(json.fields[0].value.includes(`<t:${UNIX_TS}:f>`), `expected Discord timestamp in: ${json.fields[0].value}`);
 });
 
-test("buildBanListEmbed truncates long client IDs but shows full ID for copying", () => {
+test("buildBanListEmbed shows full client ID without truncation", () => {
   const longWho = "MeshtasticAndroidMqttProxy-!fa204061verylongextra";
   const bans = [{ as: "clientid", who: longWho, until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.description.includes("…"), "truncated display should end with ellipsis");
-  assert.ok(json.description.includes(longWho), "full ID should appear on second line for copying");
+  assert.equal(json.fields[0].name, longWho, "full ID should be the field name, untruncated");
 });
 
-test("buildBanListEmbed omits pagination fields when all results fit on one page", () => {
+test("buildBanListEmbed omits footer when all results fit on one page", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 1, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.equal(json.fields?.length ?? 0, 0, "no pagination fields expected for single-page result");
+  assert.equal(json.footer, undefined, "no footer expected for single-page result");
 });
 
-test("buildBanListEmbed includes pagination fields when count exceeds limit", () => {
+test("buildBanListEmbed shows footer when count exceeds limit", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 25, page: 1, limit: 20 } });
   const json = embed.toJSON();
-  assert.ok(json.fields.some((f) => f.name === "Showing" && f.value === "1 of 25"));
-  assert.ok(json.fields.some((f) => f.name === "Page" && f.value === "1"));
-  assert.ok(json.fields.some((f) => f.name === "Page Size" && f.value === "20"));
+  assert.ok(json.footer?.text?.includes("25"), `expected total count in footer: ${json.footer?.text}`);
 });
 
-test("buildBanListEmbed includes pagination fields on page > 1", () => {
+test("buildBanListEmbed shows footer on page > 1", () => {
   const bans = [{ as: "clientid", who: "bad-client", until: UNIX_TS }];
   const embed = buildBanListEmbed({ bans, meta: { count: 5, page: 2, limit: 10 } });
   const json = embed.toJSON();
-  assert.ok(json.fields.some((f) => f.name === "Page" && f.value === "2"));
+  assert.ok(json.footer?.text?.includes("Page 2"), `expected page 2 in footer: ${json.footer?.text}`);
+});
+
+test("buildBanListEmbed caps at 25 fields (Discord embed limit)", () => {
+  const bans = Array.from({ length: 30 }, (_, i) => ({ as: "clientid", who: `client-${i}`, until: UNIX_TS }));
+  const embed = buildBanListEmbed({ bans, meta: { count: 30, page: 1, limit: 30 } });
+  const json = embed.toJSON();
+  assert.ok(json.fields.length <= 25, `expected at most 25 fields, got ${json.fields.length}`);
 });

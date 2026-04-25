@@ -108,8 +108,6 @@ export function buildProfileShowEmbed(profile) {
   return embed;
 }
 
-const BAN_WHO_MAX_LEN = 32;
-
 function parseBanUntilUnix(until) {
   if (!until || until === "infinity") {
     return null; // permanent
@@ -177,36 +175,22 @@ export function buildBanListEmbed({ bans, meta }) {
       .setDescription("No active bans.");
   }
 
-  const lines = bans.map((ban, index) => {
-    const raw = String(ban.who ?? "");
-    const display = raw.length > BAN_WHO_MAX_LEN ? `${raw.slice(0, BAN_WHO_MAX_LEN - 1)}…` : raw;
-    const until = formatBanUntil(ban.until);
-    const header = `${index + 1}. \`${display}\` (${ban.as}) — ${until}`;
-    // Append full ID on a second line when truncated so it can be copied for mqtt.unban
-    return raw.length > BAN_WHO_MAX_LEN ? `${header}\n    \`${raw}\`` : header;
-  });
-
-  let value = "";
-  for (const line of lines) {
-    if (`${value}${line}\n`.length > 1000) {
-      break;
-    }
-    value += `${line}\n`;
-  }
+  // One field per ban: name = full client ID (copyable), value = type + expiry
+  const fields = bans.slice(0, 25).map((ban) => ({
+    name: String(ban.who ?? "unknown"),
+    value: `${ban.as} · ${formatBanUntil(ban.until)}`,
+    inline: false,
+  }));
 
   const embed = new EmbedBuilder()
     .setColor(0xf97316)
     .setTitle("MQTT Active Bans")
-    .setDescription(value.trim());
+    .addFields(fields);
 
   // Only show pagination metadata when there are multiple pages or a non-default page
   const hasMultiplePages = count > limit || page > 1;
   if (hasMultiplePages) {
-    embed.addFields(
-      { name: "Showing", value: `${bans.length} of ${count}`, inline: true },
-      { name: "Page", value: String(page), inline: true },
-      { name: "Page Size", value: String(limit), inline: true },
-    );
+    embed.setFooter({ text: `Page ${page} · Showing ${bans.length} of ${count}` });
   }
 
   return embed;
