@@ -7,7 +7,7 @@
 // Commands:
 //   None
 
-import { deliverDirectEmbedToUserId, deliverEmbedPossiblyViaDm } from "./dm-delivery.js";
+import { deliverDirectEmbedToUserId, deliverEmbedPossiblyViaDm, DmDeliveryError } from "./dm-delivery.js";
 import { installDiscordRolePermissionProvider } from "./lib/discord-role-permissions.js";
 import { buildPasswordMaterial } from "./lib/mqtt-auth.js";
 import { installMqttAuditBridge, recordMqttAuditEvent, updateMqttAuditEvent } from "./lib/mqtt-audit.js";
@@ -57,13 +57,14 @@ function getDiscordIdentity(ctx) {
   return { rawMessage, userId, username, discordTag };
 }
 
-async function deliverCredentials({ robot, ctx, username, password, profileName, action, commandName }) {
+async function deliverCredentials({ robot, ctx, username, password, profileName, action, commandName, failureMode }) {
   const embed = buildCredentialEmbed({ username, password, profileName, action });
   return deliverEmbedPossiblyViaDm({
     robot,
     ctx,
     embed,
     commandName,
+    failureMode,
   });
 }
 
@@ -158,6 +159,25 @@ async function createAccount({ robot, ctx, requestedUsername }) {
   }
 
   return { username, password, profileName: profile.name };
+}
+
+async function rollbackCreatedAccount({ robot, collections, username }) {
+  try {
+    await collections.users.deleteOne({ username });
+    await collections.mqttAcl.deleteMany({ username, managed_by: "hubot-profile" });
+
+    if (collections.requests.deleteOne) {
+      await collections.requests.deleteOne({ requested_username: username, status: "approved" });
+    } else if (collections.requests.updateOne) {
+      await collections.requests.updateOne(
+        { requested_username: username, status: "approved" },
+        { $set: { status: "delivery_failed", delivery_failed_at: new Date() } },
+      );
+    }
+  } catch (error) {
+    robot.logger.warn(`mqtt.request rollback failed for ${username}: ${error.message}`);
+    throw new Error("couldn't send credentials by DM, and cleanup failed; contact an admin");
+  }
 }
 
 async function getMyAccount({ robot, ctx }) {
@@ -528,15 +548,26 @@ export function registerMqttCommands(robot, {
         requestedUsername: ctx.args.username,
       });
 
-      return deliverCredentials({
-        robot,
-        ctx,
-        username: result.username,
-        password: result.password,
-        profileName: result.profileName,
-        action: "created",
-        commandName: "mqtt.request",
-      });
+      try {
+        return await deliverCredentials({
+          robot,
+          ctx,
+          username: result.username,
+          password: result.password,
+          profileName: result.profileName,
+          action: "created",
+          commandName: "mqtt.request",
+          failureMode: "throw",
+        });
+      } catch (error) {
+        if (!(error instanceof DmDeliveryError)) {
+          throw error;
+        }
+
+        const collections = await getMqttCollections();
+        await rollbackCreatedAccount({ robot, collections, username: result.username });
+        throw new Error("couldn't send credentials by DM, so no MQTT account was created. Please enable DMs from server members or message me directly, then retry");
+      }
     }, { auditEvent, auditUpdate }),
   });
 
