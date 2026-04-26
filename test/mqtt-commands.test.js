@@ -70,6 +70,7 @@ function createContext({
   username = "kq4afy.radio",
   globalName = "Jeremy",
   dmMessages = [],
+  dmError = null,
 } = {}) {
   return {
     args,
@@ -88,6 +89,9 @@ function createContext({
               discriminator: "0",
               globalName,
               async send(message) {
+                if (dmError) {
+                  throw dmError;
+                }
                 dmMessages.push(message);
               },
             },
@@ -200,6 +204,12 @@ function createCollections() {
       },
       async insertOne(document) {
         state.requests.push(document);
+      },
+      async deleteOne(filter) {
+        const index = state.requests.findIndex((entry) => matches(entry, filter));
+        if (index >= 0) {
+          state.requests.splice(index, 1);
+        }
       },
     },
     usernamePolicy: {
@@ -324,6 +334,28 @@ test("mqtt.request provisions an account, applies the default profile, and DMs c
   assert.deepEqual(collections.state.mqttAudit[0].result, { kind: "credential_delivery" });
   assert.doesNotMatch(JSON.stringify(collections.state.mqttAudit[0]), /Password/i);
   assert.ok(collections.state.mqttAudit[0].completed_at);
+});
+
+test("mqtt.request rolls back the account when credential DM delivery fails", async () => {
+  const { robot, collections, commands } = setup();
+  const ctx = createContext({
+    args: { username: "holmebrian" },
+    dmMessages: robot.dmMessages,
+    dmError: new Error("Cannot send messages to this user due to having no mutual guilds"),
+  });
+
+  const reply = await commands.get("mqtt.request").handler(ctx);
+
+  assert.equal(
+    reply,
+    "mqtt command failed: couldn't send credentials by DM, so no MQTT account was created. Please enable DMs from server members or message me directly, then retry",
+  );
+  assert.equal(collections.state.users.length, 0);
+  assert.equal(collections.state.requests.length, 0);
+  assert.equal(collections.state.mqttAcl.length, 0);
+  assert.equal(collections.state.mqttAudit.length, 1);
+  assert.equal(collections.state.mqttAudit[0].phase, "failed");
+  assert.match(collections.state.mqttAudit[0].error.message, /couldn't send credentials by DM/);
 });
 
 test("mqtt.my-account reports when the caller has no account", async () => {
