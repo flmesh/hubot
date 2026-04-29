@@ -23,7 +23,13 @@ import {
   buildBanListEmbed,
   summarizeCommandResult,
 } from "./lib/mqtt-discord-format.js";
-import { banClient, unbanClient, listBans, getDefaultBanDays } from "./lib/mqtt-emqx-api.js";
+import {
+  banClient,
+  unbanClient,
+  listBans,
+  getDefaultBanDays,
+  listActiveClientsForUsername,
+} from "./lib/mqtt-emqx-api.js";
 import { verifyAdminGuildOnReady } from "./lib/mqtt-perms.js";
 import { validateUsernamePolicy } from "./lib/mqtt-policy.js";
 import {
@@ -97,6 +103,13 @@ async function ensureUsernameAvailable({ collections, username, discordUserId })
   if (pendingRequestByOwner) {
     throw new Error("you already have a pending MQTT request");
   }
+}
+
+function isEmqxApiLookupConfigured() {
+  return Boolean(
+    String(process.env.EMQX_API_URL ?? "").trim()
+    && String(process.env.EMQX_API_KEY ?? "").trim(),
+  );
 }
 
 async function createAccount({ robot, ctx, requestedUsername }) {
@@ -192,10 +205,19 @@ async function getMyAccount({ robot, ctx }) {
     throw new Error("you do not have an MQTT account");
   }
 
+  let connections = null;
+  if (isEmqxApiLookupConfigured()) {
+    try {
+      connections = await listActiveClientsForUsername({ username: user.username });
+    } catch (error) {
+      robot.logger.warn(`mqtt.my-account active connection lookup failed for ${user.username}: ${error.message}`);
+    }
+  }
+
   return deliverEmbedPossiblyViaDm({
     robot,
     ctx,
-    embed: buildMyAccountEmbed(user),
+    embed: buildMyAccountEmbed(user, connections),
     commandName: "mqtt.my-account",
   });
 }
@@ -251,10 +273,19 @@ async function getAccountWhois({ robot, ctx }) {
   const collections = await getMqttCollections();
   const user = await getUserByUsernameOrThrow(collections, ctx.args.username);
 
+  let connections = null;
+  if (isEmqxApiLookupConfigured()) {
+    try {
+      connections = await listActiveClientsForUsername({ username: user.username });
+    } catch (error) {
+      robot.logger.warn(`mqtt.whois active connection lookup failed for ${user.username}: ${error.message}`);
+    }
+  }
+
   return deliverEmbedPossiblyViaDm({
     robot,
     ctx,
-    embed: buildWhoisEmbed(user),
+    embed: buildWhoisEmbed(user, connections),
     commandName: "mqtt.whois",
   });
 }
