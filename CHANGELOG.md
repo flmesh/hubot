@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/flmesh/hubot/compare/v1.3.0...v1.4.0) (2026-04-29)
+
+
+### Features
+
+* **mqtt:** implement DM delivery error handling and rollback for account creation ([c2e5ab4](https://github.com/flmesh/hubot/commit/c2e5ab40b2ee8541964162c2f9c8514c189aa8d9))
+* **mqtt:** Implement DM delivery error handling and rollback for account creation ([d0e87ab](https://github.com/flmesh/hubot/commit/d0e87ab514687b867838f3bb6c0f2c0e800c5363))
+
 ## [1.3.0](https://github.com/flmesh/hubot/compare/v1.2.0...v1.3.0) (2026-04-25)
 
 
