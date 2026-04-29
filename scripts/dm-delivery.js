@@ -13,6 +13,15 @@ function isDirectMessage(rawMessage) {
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
+export class DmDeliveryError extends Error {
+  constructor(commandName, cause) {
+    super(`${commandName} DM delivery failed: ${cause?.message ?? cause}`);
+    this.name = "DmDeliveryError";
+    this.commandName = commandName;
+    this.cause = cause;
+  }
+}
+
 function splitLongLine(line, limit) {
   const parts = [];
   let remaining = line;
@@ -171,7 +180,7 @@ export async function deliverPossiblyViaDm({ robot, ctx, text, commandName }) {
   }
 }
 
-export async function deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName }) {
+export async function deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName, failureMode = "return" }) {
   const rawMessage = ctx?.context?.message?.user?.message;
   if (!rawMessage || isDirectMessage(rawMessage)) {
     return embed;
@@ -182,6 +191,9 @@ export async function deliverEmbedPossiblyViaDm({ robot, ctx, embed, commandName
     return `I sent the ${commandName} results to you in a DM.`;
   } catch (error) {
     robot.logger.warn(`${commandName} DM delivery failed: ${error.message}`);
+    if (failureMode === "throw") {
+      throw new DmDeliveryError(commandName, error);
+    }
     return `I couldn't send you a DM for ${commandName}. Please enable DMs from server members or message me directly.`;
   }
 }
