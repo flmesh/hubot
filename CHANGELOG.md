@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/flmesh/hubot/compare/v1.4.0...v1.5.0) (2026-04-29)
+
+
+### Features
+
+* **mqtt:** Enhance EMQX API integration with active client tracking ([f4b9103](https://github.com/flmesh/hubot/commit/f4b910330ac601c41167ddd9ecced1f8feb708d8))
+
 ## [1.4.0](https://github.com/flmesh/hubot/compare/v1.3.0...v1.4.0) (2026-04-29)
 
 
