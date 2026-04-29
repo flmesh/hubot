@@ -8,6 +8,19 @@ function isoOrUnknown(value, fallback = "unknown") {
   return value ? new Date(value).toISOString() : fallback;
 }
 
+function formatDiscordTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const timestampMs = new Date(value).getTime();
+  if (!Number.isFinite(timestampMs)) {
+    return null;
+  }
+
+  return `<t:${Math.floor(timestampMs / 1000)}:f>`;
+}
+
 function compactRule(rule) {
   return formatProfileRuleAsEmqxSpec(rule);
 }
@@ -23,28 +36,61 @@ function formatDiscordOwner(user) {
   return tag || "unknown";
 }
 
-export function buildMyAccountEmbed(user) {
+function formatConnectionClient(client) {
+  const clientId = String(client?.clientid ?? "unknown").trim() || "unknown";
+  const connectedAt = formatDiscordTimestamp(client?.connected_at);
+  return connectedAt ? `${clientId} since ${connectedAt}` : clientId;
+}
+
+function formatActiveConnections(connections) {
+  if (!connections) {
+    return "unavailable";
+  }
+
+  const clients = Array.isArray(connections.data) ? connections.data : [];
+  const count = Number(connections.meta?.count ?? clients.length);
+  if (clients.length === 0 && count <= 0) {
+    return "none";
+  }
+
+  const visibleClients = clients.slice(0, 10).map(formatConnectionClient);
+  const summary = `${count} active`;
+  if (visibleClients.length === 0) {
+    return summary;
+  }
+
+  const remaining = count > visibleClients.length
+    ? `\n...and ${count - visibleClients.length} more`
+    : "";
+  return `${summary}\n${visibleClients.join("\n")}${remaining}`;
+}
+
+export function buildMyAccountEmbed(user, connections = null) {
   return new EmbedBuilder()
     .setColor(MQTT_EMBED_COLOR)
     .setTitle("MQTT Account")
+    .setTimestamp(new Date())
     .addFields(
       { name: "Username", value: user.username ?? "unknown", inline: true },
       { name: "Status", value: user.status ?? "unknown", inline: true },
       { name: "Profile", value: user.profile ?? "unset", inline: true },
-      { name: "Created", value: isoOrUnknown(user.created_at), inline: false },
+      { name: "Active Connections", value: formatActiveConnections(connections), inline: false },
+      { name: "Created", value: formatDiscordTimestamp(user.created_at) ?? isoOrUnknown(user.created_at), inline: false },
     );
 }
 
-export function buildWhoisEmbed(user) {
+export function buildWhoisEmbed(user, connections = null) {
   return new EmbedBuilder()
     .setColor(MQTT_EMBED_COLOR)
     .setTitle(`MQTT Account: ${user.username ?? "unknown"}`)
+    .setTimestamp(new Date())
     .addFields(
       { name: "Status", value: user.status ?? "unknown", inline: true },
       { name: "Profile", value: user.profile ?? "unset", inline: true },
       { name: "Owner", value: formatDiscordOwner(user), inline: false },
-      { name: "Created", value: isoOrUnknown(user.created_at), inline: true },
-      { name: "Updated", value: isoOrUnknown(user.updated_at, "never"), inline: true },
+      { name: "Active Connections", value: formatActiveConnections(connections), inline: false },
+      { name: "Created", value: formatDiscordTimestamp(user.created_at) ?? isoOrUnknown(user.created_at), inline: true },
+      { name: "Updated", value: formatDiscordTimestamp(user.updated_at) ?? isoOrUnknown(user.updated_at, "never"), inline: true },
     );
 }
 

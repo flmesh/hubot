@@ -77,6 +77,10 @@ cp .env.example .env
 | `MONGO_DB_NAME` | no | `mqtt` | MongoDB database name used by the `mqtt` account commands |
 | `MQTT_ADMIN_GUILD_ID` | no | — | Discord guild ID used to verify admin role membership for DM commands |
 | `MQTT_ADMIN_ROLE_IDS` | no | — | Comma-separated Discord role IDs allowed to run MQTT admin commands |
+| `EMQX_API_URL` | no | — | EMQX HTTP API base URL used for MQTT ban commands and active client lookup |
+| `EMQX_API_KEY` | no | — | EMQX API key used for HTTP Basic Auth |
+| `EMQX_API_SECRET` | no | — | EMQX API secret used for HTTP Basic Auth |
+| `EMQX_BAN_DEFAULT_DAYS` | no | `7` | Default number of days used by `mqtt.ban` |
 
 > **Security note:** Never commit your `.env` file. It is listed in `.gitignore`.
 
@@ -290,10 +294,13 @@ Behavior:
   intentionally fixed to lowercase letters, digits, underscores, and hyphens
   with a leading lowercase letter.
 - `mqtt.my-account` shows the caller's current MQTT username, status, profile,
-  and creation time.
+  active EMQX client connections when the EMQX API is configured, and creation
+  time.
 - `mqtt.rotate` rotates the caller's password and sends the new password by DM.
 - `mqtt.reset` resets another user's password and attempts to DM the new
   password to the account owner.
+- `mqtt.whois` shows admin account details, including active EMQX client
+  connections when the EMQX API is configured.
 - `mqtt.reset`, `mqtt.whois`, `mqtt.disable`, `mqtt.enable`, and
   `mqtt.profile.set` are admin-only and require the caller to hold a configured
   Discord role from `MQTT_ADMIN_ROLE_IDS`.

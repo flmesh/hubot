@@ -291,6 +291,9 @@ test.afterEach(() => {
   clearMqttCollectionsOverrideForTests();
   delete process.env.MQTT_ADMIN_ROLE_IDS;
   delete process.env.MQTT_ADMIN_GUILD_ID;
+  delete process.env.EMQX_API_URL;
+  delete process.env.EMQX_API_KEY;
+  delete process.env.EMQX_API_SECRET;
 });
 
 test("MQTT admin commands declare command-bus role permissions", () => {
@@ -384,6 +387,54 @@ test("mqtt.my-account returns an embed for an existing account", async () => {
   const embed = reply.toJSON();
   assert.equal(embed.title, "MQTT Account");
   assert.equal(embed.fields.find((field) => field.name === "Username")?.value, "jbouse");
+  assert.ok(embed.timestamp);
+});
+
+test("mqtt.my-account includes active MQTT client connections", async () => {
+  const previousFetch = global.fetch;
+  process.env.EMQX_API_URL = "http://emqx:18083";
+  process.env.EMQX_API_KEY = "testkey";
+  process.env.EMQX_API_SECRET = "testsecret";
+  global.fetch = async (url, options) => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        data: [
+          {
+            clientid: "MeshtasticAndroidMqttProxy-!deadbeef",
+            username: "jbouse",
+            connected: true,
+            connected_at: "2026-04-29T12:00:00.000+00:00",
+          },
+        ],
+        meta: { count: 1, page: 1, limit: 10 },
+      };
+    },
+  });
+
+  try {
+    const { collections, commands } = setup();
+    collections.state.users.push({
+      _id: "1",
+      username: "jbouse",
+      profile: "default",
+      status: "active",
+      discord_user_id: "505598218306977793",
+      created_at: new Date("2026-04-19T00:00:00.000Z"),
+    });
+
+    const reply = await commands.get("mqtt.my-account").handler(createContext({ guildId: null }));
+
+    assert.ok(reply instanceof EmbedBuilder);
+    const embed = reply.toJSON();
+    const connections = embed.fields.find((field) => field.name === "Active Connections")?.value ?? "";
+    assert.match(connections, /1 active/);
+    assert.match(connections, /MeshtasticAndroidMqttProxy-!deadbeef/);
+    assert.match(connections, /<t:1777464000:f>/);
+  } finally {
+    global.fetch = previousFetch;
+  }
 });
 
 test("mqtt.my-account DMs account details when invoked in a server", async () => {
@@ -496,6 +547,59 @@ test("mqtt.whois DMs account details when invoked by an admin in a server", asyn
   const embed = robot.dmMessages[0].embeds[0].toJSON();
   assert.equal(embed.title, "MQTT Account: jbouse");
   assert.equal(embed.fields.find((field) => field.name === "Owner")?.value, "<@600>");
+  assert.ok(embed.timestamp);
+});
+
+test("mqtt.whois includes active MQTT client connections for admins", async () => {
+  const previousFetch = global.fetch;
+  process.env.EMQX_API_URL = "http://emqx:18083";
+  process.env.EMQX_API_KEY = "testkey";
+  process.env.EMQX_API_SECRET = "testsecret";
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        data: [
+          {
+            clientid: "MeshtasticPythonMqttProxy-!cafebabe",
+            username: "jbouse",
+            connected: true,
+            connected_at: "2026-04-29T14:26:52.012+00:00",
+          },
+        ],
+        meta: { count: 1, page: 1, limit: 10 },
+      };
+    },
+  });
+
+  try {
+    const { collections, commands } = setup();
+    collections.state.users.push({
+      _id: "1",
+      username: "jbouse",
+      profile: "default",
+      status: "active",
+      discord_user_id: "600",
+      discord_tag: "jbouse",
+      created_at: new Date("2026-04-19T00:00:00.000Z"),
+    });
+
+    const reply = await commands.get("mqtt.whois").handler(createContext({
+      args: { username: "jbouse" },
+      guildId: null,
+      roleIds: ["1"],
+    }));
+
+    assert.ok(reply instanceof EmbedBuilder);
+    const embed = reply.toJSON();
+    const connections = embed.fields.find((field) => field.name === "Active Connections")?.value ?? "";
+    assert.match(connections, /1 active/);
+    assert.match(connections, /MeshtasticPythonMqttProxy-!cafebabe/);
+    assert.match(connections, /<t:1777472812:f>/);
+  } finally {
+    global.fetch = previousFetch;
+  }
 });
 
 test("mqtt.whois allows admin checks from DM by fetching configured guild membership", async () => {
