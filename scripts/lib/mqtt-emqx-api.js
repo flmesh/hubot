@@ -114,3 +114,28 @@ export async function listBans({ page = 1, limit = 20, fetchImpl } = {}) {
     meta: json?.meta ?? { count: 0, page, limit },
   };
 }
+
+export async function listActiveClientsForUsername({ username, limit = 10, fetchImpl } = {}) {
+  const normalizedUsername = String(username ?? "").trim();
+  if (!normalizedUsername) {
+    throw new Error("username is required");
+  }
+
+  const params = new URLSearchParams({
+    username: normalizedUsername,
+    conn_state: "connected",
+    page: "1",
+    limit: String(limit),
+  });
+
+  const json = await emqxRequest({
+    method: "GET",
+    path: `/api/v5/clients?${params.toString()}`,
+    fetchImpl,
+  });
+
+  return {
+    data: Array.isArray(json?.data) ? json.data : [],
+    meta: json?.meta ?? { count: 0, page: 1, limit },
+  };
+}

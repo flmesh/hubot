@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { banClient, unbanClient, listBans, getDefaultBanDays } from "../scripts/lib/mqtt-emqx-api.js";
+import {
+  banClient,
+  unbanClient,
+  listBans,
+  listActiveClientsForUsername,
+  getDefaultBanDays,
+} from "../scripts/lib/mqtt-emqx-api.js";
 
 const EMQX_API_URL = "http://emqx:18083";
 const EMQX_API_KEY = "testkey";
@@ -259,6 +265,42 @@ test("listBans returns empty data array on empty response", async () => {
 
     assert.deepEqual(result.data, []);
     assert.equal(result.meta.count, 0);
+  });
+});
+
+test("listActiveClientsForUsername queries connected clients by username", async () => {
+  await withEmqxEnv(async () => {
+    const clients = [
+      {
+        clientid: "MeshtasticAndroidMqttProxy-!deadbeef",
+        username: "jbouse",
+        connected: true,
+        connected_at: "2026-04-29T12:00:00.000+00:00",
+      },
+    ];
+    const meta = { count: 1, page: 1, limit: 10 };
+    const fetchImpl = captureFetch(buildFetchOk(200, { data: clients, meta }));
+
+    const result = await listActiveClientsForUsername({ username: "jbouse", fetchImpl });
+
+    assert.deepEqual(result.data, clients);
+    assert.deepEqual(result.meta, meta);
+
+    const [call] = fetchImpl.calls;
+    assert.ok(call.url.includes("/api/v5/clients"), "URL should include /api/v5/clients");
+    assert.ok(call.url.includes("username=jbouse"), "URL should include username filter");
+    assert.ok(call.url.includes("conn_state=connected"), "URL should include connected-state filter");
+    assert.ok(call.url.includes("limit=10"), "URL should include limit param");
+    assert.equal(call.options.method, "GET");
+  });
+});
+
+test("listActiveClientsForUsername requires username", async () => {
+  await withEmqxEnv(async () => {
+    await assert.rejects(
+      () => listActiveClientsForUsername({ username: "", fetchImpl: buildFetchOk(200, {}) }),
+      /username is required/,
+    );
   });
 });
 
