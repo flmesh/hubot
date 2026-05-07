@@ -79,6 +79,21 @@ test("Discord role permission provider fetches configured guild membership for D
   assert.equal(await provider.hasRole(null, ["env:MQTT_ADMIN_ROLE_IDS"], createContext({ guildId: null })), true);
 });
 
+test("Discord role permission provider falls back when permission guild env is empty", async () => {
+  process.env.HUBOT_DISCORD_PERMISSION_GUILD_ID = "";
+  process.env.MQTT_ADMIN_GUILD_ID = "929659839196561419";
+  process.env.MQTT_ADMIN_ROLE_IDS = "1";
+  const robot = createRobot();
+  robot.fetchedGuildMembers.set("505598218306977793", {
+    roles: {
+      cache: new Map([["1", { id: "1" }]]),
+    },
+  });
+  const provider = createDiscordRolePermissionProvider(robot);
+
+  assert.equal(await provider.hasRole(null, ["env:MQTT_ADMIN_ROLE_IDS"], createContext({ guildId: null })), true);
+});
+
 test("installDiscordRolePermissionProvider installs provider once", () => {
   const robot = createRobot();
 

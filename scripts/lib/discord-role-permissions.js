@@ -64,12 +64,12 @@ function hasAnyRole(roleCollection, roleIds) {
 
 function getPermissionGuildId(context) {
   const rawMessage = getRawMessageFromContext(context);
-  return String(
-    process.env.HUBOT_DISCORD_PERMISSION_GUILD_ID
-      ?? process.env.MQTT_ADMIN_GUILD_ID
-      ?? rawMessage?.guildId
-      ?? "",
-  ).trim();
+  return [
+    process.env.MQTT_ADMIN_GUILD_ID,
+    rawMessage?.guildId,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .find(Boolean) ?? "";
 }
 
 export function createDiscordRolePermissionProvider(robot) {
