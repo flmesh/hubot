@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1](https://github.com/flmesh/hubot/compare/v1.5.0...v1.5.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **discord:** update permission guild ID handling and enhance fallback logic in tests ([5b11b33](https://github.com/flmesh/hubot/commit/5b11b33c9fa742aa039a68abdadadf0ff89cad00))
+* **discord:** Update permission guild ID handling and enhance fallback logic in tests ([e2aeea7](https://github.com/flmesh/hubot/commit/e2aeea7121f9a8a5234b30a8a0cec3f3f0bcc75d))
+
 ## [1.5.0](https://github.com/flmesh/hubot/compare/v1.4.0...v1.5.0) (2026-04-29)
 
 
