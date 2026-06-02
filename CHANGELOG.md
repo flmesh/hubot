@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/flmesh/hubot/compare/v1.5.1...v1.6.0) (2026-05-28)
+
+
+### Features
+
+* **deps:** update dependency redis to v6 ([4cb40ee](https://github.com/flmesh/hubot/commit/4cb40ee57a2bdce2042357aebc824a35bfbd4242))
+* **deps:** update dependency redis to v6 ([afbd1a0](https://github.com/flmesh/hubot/commit/afbd1a07eb83696cb082f883421eaeab0762b849))
+
 ## [1.5.1](https://github.com/flmesh/hubot/compare/v1.5.0...v1.5.1) (2026-05-08)
 
 
